@@ -840,15 +840,20 @@ function MapEngine() {
   // и держать их все в DOM (каждая — div со свечением и карточкой) телефон
   // не тянет: тормозит и панорамирование, и зум. Рисуем только видимое плюс
   // небольшой запас по краям, чтобы при сдвиге не было пустых полей.
+  // Куллинг квантован по сетке: пересчёт списка на каждый кадр заставлял
+  // React перерисовывать все маркеры 60 раз в секунду.
+  const CULL_STEP = 300;
+  const qx = Math.round(view.tx / CULL_STEP) * CULL_STEP;
+  const qy = Math.round(view.ty / CULL_STEP) * CULL_STEP;
   const visibleMarkers = useMemo(() => {
     if (viewportSize.w === 0) return clustered;
-    const pad = 120;
+    const pad = CULL_STEP + 150;
     return clustered.filter(m => {
-      const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
-      const my = (m.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
+      const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + qx;
+      const my = (m.yPct / 100) * STAGE_SIZE * view.scale + qy;
       return mx > -pad && mx < viewportSize.w + pad && my > -pad && my < viewportSize.h + pad;
     });
-  }, [clustered, view, viewportSize]);
+  }, [clustered, qx, qy, view.scale, viewportSize]);
 
   // Measure point screen coords
   const measureScreenPts = useMemo(() => {
@@ -927,15 +932,23 @@ function MapEngine() {
         </svg>
       )}
 
+      {/* Все маркеры в ОДНОМ transform-контейнере: при панораме меняется
+          одна строка transform вместо left/top у сотен элементов. */}
+      <div style={{
+        position: 'absolute', left: 0, top: 0, width: 0, height: 0,
+        transform: `translate3d(${view.tx}px, ${view.ty}px, 0)`,
+        willChange: 'transform',
+        zIndex: 10,
+      }}>
       {visibleMarkers.map(m => {
         const cat = catIdx[m.cat] || BUILTIN_CATEGORIES[BUILTIN_CATEGORIES.length - 1];
-        const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
-        const my = (m.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
+        const mx = (m.xPct / 100) * STAGE_SIZE * view.scale;
+        const my = (m.yPct / 100) * STAGE_SIZE * view.scale;
         const isCluster = m.id.startsWith('cluster_');
         return (
           <div key={m.id} className="marker-glow marker-hover-wrap" style={{
             position: 'absolute', left: mx, top: my, transform: 'translate(-50%, -50%)',
-            '--glow-color': cat.color, zIndex: 10,
+            '--glow-color': cat.color,
           } as React.CSSProperties}>
             {isCluster ? (
               <div style={{ width: 28, height: 28, background: `${cat.color}33`, border: `1px solid ${cat.color}`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 9, color: cat.color }}>
@@ -967,6 +980,7 @@ function MapEngine() {
           </div>
         );
       })}
+      </div>
 
       {/* Measure path — multi-point polyline */}
       {measureScreenPts.length >= 1 && (

@@ -94,7 +94,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
-html { touch-action: manipulation; }
+/* none, а не manipulation: manipulation оставляет браузеру пинч-зум. */
+html { touch-action: none; overscroll-behavior: none; }
 
 /* =========================================================
    ZONE APP ROOT — Full viewport lock
