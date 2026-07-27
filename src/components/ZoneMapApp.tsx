@@ -526,6 +526,8 @@ function MapEngine() {
   const customCategories = useZoneMapStore(s => s.customCategories);
   const searchQuery = useZoneMapStore(s => s.searchQuery);
   const setShowSaveIndicator = useZoneMapStore(s => s.setShowSaveIndicator);
+  const mapImageWidth = useZoneMapStore(s => s.mapImageWidth);
+  const mapImageHeight = useZoneMapStore(s => s.mapImageHeight);
 
   const [isDragging, setIsDragging] = useState(false);
   const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
@@ -577,6 +579,19 @@ function MapEngine() {
     const vp = viewportRef.current;
     if (!vp) return;
 
+    // Свой ограничитель по кадрам: touchmove при щипке сыплется так же часто,
+    // как pointermove, и без этого каждый кадр перерисовывал всю карту.
+    let raf: number | null = null;
+    let pending: { tx: number; ty: number; scale: number } | null = null;
+    const flush = () => {
+      raf = null;
+      if (pending) useZoneMapStore.getState().setView(pending);
+    };
+    const push = (v: { tx: number; ty: number; scale: number }) => {
+      pending = v;
+      if (raf === null) raf = requestAnimationFrame(flush);
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         isPinchingRef.current = true;
@@ -608,7 +623,7 @@ function MapEngine() {
         const my = cy - rect.top;
         const newTx = mx - (mx - currentView.tx) * (newScale / currentView.scale);
         const newTy = my - (my - currentView.ty) * (newScale / currentView.scale);
-        useZoneMapStore.getState().setView({ tx: newTx, ty: newTy, scale: newScale });
+        push({ tx: newTx, ty: newTy, scale: newScale });
       }
     };
 
@@ -617,6 +632,7 @@ function MapEngine() {
     vp.addEventListener('touchend', handleTouchEnd, { passive: false });
     vp.addEventListener('touchcancel', handleTouchEnd, { passive: false });
     return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
       vp.removeEventListener('touchstart', handleTouchStart);
       vp.removeEventListener('touchmove', handleTouchMove);
       vp.removeEventListener('touchend', handleTouchEnd);
@@ -652,6 +668,22 @@ function MapEngine() {
     viewportRef.current?.setPointerCapture(e.pointerId);
   }, [view.tx, view.ty]);
 
+  // Палец генерирует до 120 событий в секунду, и каждое вызывало setView,
+  // то есть полную перерисовку компонента со всеми метками. Копим последнее
+  // положение и применяем один раз за кадр — картинка двигается так же
+  // плавно, а работы в разы меньше.
+  const rafRef = useRef<number | null>(null);
+  const pendingViewRef = useRef<{ tx: number; ty: number; scale: number } | null>(null);
+  const scheduleView = useCallback((v: { tx: number; ty: number; scale: number }) => {
+    pendingViewRef.current = v;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      if (pendingViewRef.current) setView(pendingViewRef.current);
+    });
+  }, [setView]);
+  useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); }, []);
+
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragRef.current.active || isPinchingRef.current) return;
     const dx = e.clientX - dragRef.current.startX;
@@ -662,9 +694,9 @@ function MapEngine() {
     // a long-press). Matches the tolerance used elsewhere in this project.
     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) dragRef.current.moved = true;
     if ((!addMode && !measureModeOn) || dragRef.current.moved) {
-      setView({ tx: dragRef.current.startTx + dx, ty: dragRef.current.startTy + dy, scale: view.scale });
+      scheduleView({ tx: dragRef.current.startTx + dx, ty: dragRef.current.startTy + dy, scale: view.scale });
     }
-  }, [addMode, measureModeOn, view.scale, setView]);
+  }, [addMode, measureModeOn, view.scale, scheduleView]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     setIsDragging(false);
@@ -786,27 +818,31 @@ function MapEngine() {
       <div className="rad-pulse-overlay" />
       <div className="blood-ghost" />
 
-      {mapImageUrl && (
-        <img ref={imgRef} src={mapImageUrl} alt="Map" onLoad={handleImageLoad}
-          style={{
-            position: 'absolute',
-            left: 0, top: 0,
-            // Размер фиксированный, движение и зум — через transform.
-            // Раньше здесь на каждом кадре пересчитывались width/height,
-            // и браузер заново раскладывал и растрировал картинку 8000 px
-            // при каждом сдвиге пальца. transform композитится на видеокарте
-            // и раскладку не трогает.
-            width: STAGE_SIZE,
-            height: STAGE_SIZE,
-            transform: `translate3d(${view.tx}px, ${view.ty}px, 0) scale(${view.scale})`,
-            transformOrigin: '0 0',
-            willChange: 'transform',
-            // CSS-фильтр поверх такой картинки заставлял перерисовывать её
-            // целиком на каждом кадре. Тонировка убрана — при желании её
-            // дешевле запечь в сам файл.
-            pointerEvents: 'none',
-          }} draggable={false} />
-      )}
+      {mapImageUrl && (() => {
+        // Элемент держим в НАТУРАЛЬНОМ размере картинки (8000 px), а разницу
+        // с внутренней сеткой STAGE_SIZE добираем через transform.
+        // Ставить элементу width = STAGE_SIZE (20000 px) нельзя: у браузеров
+        // предел на размер слоя обычно 8192 px, и всё, что больше, рисуется
+        // огрызком — карта схлопывалась в полоску.
+        const natW = mapImageWidth || STAGE_SIZE;
+        const natH = mapImageHeight || STAGE_SIZE;
+        const k = (view.scale * STAGE_SIZE) / natW;
+        return (
+          <img ref={imgRef} src={mapImageUrl} alt="Map" onLoad={handleImageLoad}
+            style={{
+              position: 'absolute',
+              left: 0, top: 0,
+              width: natW,
+              height: natH,
+              // Движение и зум через transform: композитится видеокартой,
+              // раскладку не трогает. Раньше на каждом кадре менялись
+              // width/height, и браузер заново растрировал всю картинку.
+              transform: `translate3d(${view.tx}px, ${view.ty}px, 0) scale(${k})`,
+              transformOrigin: '0 0',
+              pointerEvents: 'none',
+            }} draggable={false} />
+        );
+      })()}
 
       {gridVisible && (
         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} className="grid-overlay-lines">
