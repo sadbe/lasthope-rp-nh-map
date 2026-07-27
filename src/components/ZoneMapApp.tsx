@@ -540,6 +540,9 @@ function MapEngine() {
   // kept running alongside the native 2-finger pinch handler below and the
   // two fought over view.tx/ty — the view would jump/drift mid-pinch.
   const isPinchingRef = useRef(false);
+  // Актуальные кластеры для хит-теста в handlePointerUp (см. комментарий
+  // у присваивания ниже).
+  const clusteredRef = useRef<Marker[]>([]);
 
   // ResizeObserver
   useEffect(() => {
@@ -573,6 +576,19 @@ function MapEngine() {
     const img = e.currentTarget;
     setMapImageSize(img.naturalWidth, img.naturalHeight);
   }, [setMapImageSize]);
+
+  // Страховка от гонки с кэшем: loadMapAssets предзагружает картинку через
+  // new Image(), поэтому настоящий <img> монтируется с уже готовым файлом —
+  // и браузер может выстрелить load ДО того, как React повесит onLoad.
+  // Тогда размер так и остаётся 0, элемент рисуется в фолбэке 20000px,
+  // упирается в лимит слоя 8192 и схлопывается в полоску, попутно съедая
+  // память. Проверяем complete вручную после монтирования и смены src.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setMapImageSize(img.naturalWidth, img.naturalHeight);
+    }
+  }, [mapImageUrl, setMapImageSize]);
 
   // Pinch zoom — use store.getState() for fresh values (fix stale closure bug)
   useEffect(() => {
@@ -615,7 +631,13 @@ function MapEngine() {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const newScale = Math.max(0.1, Math.min(pinchRef.current.initialScale * (dist / pinchRef.current.initialDist), 10));
+        // Нижний предел зума считаем от вписанного масштаба, а не константой.
+        // Вписанная карта живёт на scale ≈ 0.02–0.045 (viewport / 20000),
+        // а жёсткий clamp 0.1 при первом же щипке ШВЫРЯЛ масштаб на 0.1 —
+        // скачок в 2–5 раз, карта «прыгала» от любого касания.
+        const fitScale = Math.min(vp.clientWidth, vp.clientHeight) / STAGE_SIZE;
+        const minScale = fitScale * 0.5;
+        const newScale = Math.max(minScale, Math.min(pinchRef.current.initialScale * (dist / pinchRef.current.initialDist), 10));
         const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         const rect = vp.getBoundingClientRect();
@@ -651,7 +673,12 @@ function MapEngine() {
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = Math.max(0.1, Math.min(currentView.scale * factor, 10));
+      // Тот же динамический минимум, что и в пинче: от вписанного масштаба.
+      // Раньше clamp 0.1 означал, что первый скролл «от себя» на вписанной
+      // карте наоборот ПРИБЛИЖАЛ её скачком до scale 0.1.
+      const fitScale = Math.min(vp.clientWidth, vp.clientHeight) / STAGE_SIZE;
+      const minScale = fitScale * 0.5;
+      const newScale = Math.max(minScale, Math.min(currentView.scale * factor, 10));
       const newTx = mx - (mx - currentView.tx) * (newScale / currentView.scale);
       const newTy = my - (my - currentView.ty) * (newScale / currentView.scale);
       useZoneMapStore.getState().setView({ tx: newTx, ty: newTy, scale: newScale });
@@ -721,6 +748,28 @@ function MapEngine() {
       } else if (measureModeOn) {
         addMeasurePoint({ xPct, yPct });
       } else {
+        // Сначала проверяем кластеры. Раньше клик по пузырю «37» находил
+        // случайную сырую точку из-под него и открывал её карточку — теперь
+        // вместо этого приближаем карту к центру кластера, он рассыпается.
+        const cluster = clusteredRef.current.find(c => {
+          if (!c.id.startsWith('cluster_')) return false;
+          const cx = (c.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
+          const cy = (c.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
+          return Math.abs(clickX - cx) < 16 && Math.abs(clickY - cy) < 16;
+        });
+        if (cluster) {
+          const newScale = Math.min(view.scale * 2.5, 10);
+          // Держим точку кластера под курсором при зуме — та же формула,
+          // что в колесе и пинче.
+          const cx = (cluster.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
+          const cy = (cluster.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
+          setView({
+            tx: cx - (cx - view.tx) * (newScale / view.scale),
+            ty: cy - (cy - view.ty) * (newScale / view.scale),
+            scale: newScale,
+          });
+          return;
+        }
         const all = allMarkers(presetMarkers, markers);
         const clicked = all.find(m => {
           const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
@@ -730,7 +779,7 @@ function MapEngine() {
         if (clicked) { setActiveSheet(clicked.id); setSheetMode('view'); }
       }
     }
-  }, [addMode, measureModeOn, view, markers, presetMarkers, addMarker, addMeasurePoint, setActiveSheet, setSheetMode, setAddMode, setShowSaveIndicator]);
+  }, [addMode, measureModeOn, view, markers, presetMarkers, addMarker, addMeasurePoint, setActiveSheet, setSheetMode, setAddMode, setShowSaveIndicator, setView]);
 
   // Drag & drop file upload
   const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); }, []);
@@ -782,6 +831,11 @@ function MapEngine() {
     return singles;
   }, [filteredMarkers, viewportSize, view.scale]);
 
+  // Обработчик клика объявлен выше по файлу, а clustered — здесь, поэтому
+  // напрямую в замыкание его не взять (TDZ в массиве зависимостей). Ref
+  // обновляется каждый рендер и читается только в момент клика.
+  clusteredRef.current = clustered;
+
   // Отсекаем всё, что за пределами экрана. В spawns.json почти 8000 точек,
   // и держать их все в DOM (каждая — div со свечением и карточкой) телефон
   // не тянет: тормозит и панорамирование, и зум. Рисуем только видимое плюс
@@ -824,8 +878,11 @@ function MapEngine() {
         // Ставить элементу width = STAGE_SIZE (20000 px) нельзя: у браузеров
         // предел на размер слоя обычно 8192 px, и всё, что больше, рисуется
         // огрызком — карта схлопывалась в полоску.
-        const natW = mapImageWidth || STAGE_SIZE;
-        const natH = mapImageHeight || STAGE_SIZE;
+        // Пока размер не определён, фолбэк тоже держим ПОД лимитом 8192:
+        // старый фолбэк STAGE_SIZE сам создавал ту же полоску, если onLoad
+        // не успевал (см. страховку в useEffect выше).
+        const natW = mapImageWidth || 8000;
+        const natH = mapImageHeight || 8000;
         const k = (view.scale * STAGE_SIZE) / natW;
         return (
           <img ref={imgRef} src={mapImageUrl} alt="Map" onLoad={handleImageLoad}
@@ -845,13 +902,22 @@ function MapEngine() {
       })()}
 
       {gridVisible && (
+        // Сетка привязана к КАРТЕ, а не к экрану: раньше линии стояли на
+        // процентах вьюпорта и при панораме/зуме карта ехала под неподвижной
+        // решёткой — как будто смотришь через забор. Теперь линии считаются
+        // из координат сцены и двигаются вместе с картой. Шаг — 5% мира
+        // (~1 км при 20480 м); рисуем только линии, попавшие в экран.
         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} className="grid-overlay-lines">
-          {Array.from({ length: 20 }, (_, i) => (
-            <line key={`vg${i}`} x1={`${i * 5}%`} y1="0" x2={`${i * 5}%`} y2="100%" stroke="var(--border)" strokeWidth="0.5" />
-          ))}
-          {Array.from({ length: 20 }, (_, i) => (
-            <line key={`hg${i}`} x1="0" y1={`${i * 5}%`} x2="100%" y2={`${i * 5}%`} stroke="var(--border)" strokeWidth="0.5" />
-          ))}
+          {Array.from({ length: 21 }, (_, i) => {
+            const sx = (i * 5 / 100) * STAGE_SIZE * view.scale + view.tx;
+            if (sx < 0 || sx > viewportSize.w) return null;
+            return <line key={`vg${i}`} x1={sx} y1={0} x2={sx} y2={viewportSize.h} stroke="var(--border)" strokeWidth="0.5" />;
+          })}
+          {Array.from({ length: 21 }, (_, i) => {
+            const sy = (i * 5 / 100) * STAGE_SIZE * view.scale + view.ty;
+            if (sy < 0 || sy > viewportSize.h) return null;
+            return <line key={`hg${i}`} x1={0} y1={sy} x2={viewportSize.w} y2={sy} stroke="var(--border)" strokeWidth="0.5" />;
+          })}
         </svg>
       )}
 
