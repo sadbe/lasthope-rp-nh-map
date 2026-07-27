@@ -922,6 +922,17 @@ function ToolbarWide() {
   const setActivePanel = useZoneMapStore(s => s.setActivePanel);
   const themeMode = useZoneMapStore(s => s.themeMode);
   const setThemeMode = useZoneMapStore(s => s.setThemeMode);
+  const topoSrc = useZoneMapStore(s => s.topoSrc);
+  const satelliteSrc = useZoneMapStore(s => s.satelliteSrc);
+  const showingTopo = useZoneMapStore(s => s.showingTopo);
+  const setShowingTopo = useZoneMapStore(s => s.setShowingTopo);
+  const setMapImageUrl = useZoneMapStore(s => s.setMapImageUrl);
+
+  const toggleTopo = useCallback(() => {
+    const next = !showingTopo;
+    setShowingTopo(next);
+    setMapImageUrl((next ? topoSrc : satelliteSrc) ?? null);
+  }, [showingTopo, topoSrc, satelliteSrc, setShowingTopo, setMapImageUrl]);
 
   return (
     <div className="toolbar-wide">
@@ -938,6 +949,12 @@ function ToolbarWide() {
       <button className={`s-btn ${gridVisible ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setGridVisible(!gridVisible)}>
         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="0" y1="4" x2="16" y2="4" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="8" x2="16" y2="8" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="12" x2="16" y2="12" stroke="currentColor" strokeWidth="0.8"/><line x1="4" y1="0" x2="4" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="8" y1="0" x2="8" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" strokeWidth="0.8"/></svg> <span className="btn-label">СЕТКА</span>
       </button>
+      {topoSrc && (
+        <button className={`s-btn ${showingTopo ? 'active' : ''}`} onPointerUp={blurBtn} onClick={toggleTopo} title="Спутник / Топография">
+          <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><path d="M1 10 L5 5 L8 8 L11 4 L15 10" fill="none" stroke="currentColor" strokeWidth="1.3"/><path d="M1 13 L5 8 L8 11 L11 7 L15 13" fill="none" stroke="currentColor" strokeWidth="1.3" opacity="0.5"/></svg>
+          <span className="btn-label">{showingTopo ? 'ТОПО' : 'СПУТНИК'}</span>
+        </button>
+      )}
       <button className={`s-btn ${activePanel === 'layers' ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setActivePanel(activePanel === 'layers' ? 'none' : 'layers')}>
         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><rect x="2" y="2" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="6" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="10" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/></svg> <span className="btn-label">СЛОИ</span>
       </button>
@@ -984,6 +1001,17 @@ function ToolbarCompact() {
   const setGridVisible = useZoneMapStore(s => s.setGridVisible);
   const activePanel = useZoneMapStore(s => s.activePanel);
   const setActivePanel = useZoneMapStore(s => s.setActivePanel);
+  const topoSrc = useZoneMapStore(s => s.topoSrc);
+  const satelliteSrc = useZoneMapStore(s => s.satelliteSrc);
+  const showingTopo = useZoneMapStore(s => s.showingTopo);
+  const setShowingTopo = useZoneMapStore(s => s.setShowingTopo);
+  const setMapImageUrl = useZoneMapStore(s => s.setMapImageUrl);
+
+  const toggleTopo = useCallback(() => {
+    const next = !showingTopo;
+    setShowingTopo(next);
+    setMapImageUrl((next ? topoSrc : satelliteSrc) ?? null);
+  }, [showingTopo, topoSrc, satelliteSrc, setShowingTopo, setMapImageUrl]);
 
   return (
     <div className="toolbar-compact">
@@ -1007,6 +1035,12 @@ function ToolbarCompact() {
         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="0" y1="4" x2="16" y2="4" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="8" x2="16" y2="8" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="12" x2="16" y2="12" stroke="currentColor" strokeWidth="0.8"/><line x1="4" y1="0" x2="4" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="8" y1="0" x2="8" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" strokeWidth="0.8"/></svg>
         <span className="mob-txt">Сетка</span>
       </button>
+      {topoSrc && (
+        <button className={`s-btn mob-btn ${showingTopo ? 'active' : ''}`} onPointerUp={blurBtn} onClick={toggleTopo}>
+          <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><path d="M1 10 L5 5 L8 8 L11 4 L15 10" fill="none" stroke="currentColor" strokeWidth="1.3"/><path d="M1 13 L5 8 L8 11 L11 7 L15 13" fill="none" stroke="currentColor" strokeWidth="1.3" opacity="0.5"/></svg>
+          <span className="mob-txt">{showingTopo ? 'Топо' : 'Спутник'}</span>
+        </button>
+      )}
       <button className={`s-btn mob-btn ${activePanel === 'layers' ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setActivePanel(activePanel === 'layers' ? 'none' : 'layers')}>
         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><rect x="2" y="2" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="6" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="10" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
         <span className="mob-txt">Слои</span>
@@ -1119,6 +1153,7 @@ function usePersistence() {
   const setThemeMode = useZoneMapStore(s => s.setThemeMode);
   const loadFromServer = useZoneMapStore(s => s.loadFromServer);
   const loadPresetMarkers = useZoneMapStore(s => s.loadPresetMarkers);
+  const loadMapAssets = useZoneMapStore(s => s.loadMapAssets);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -1136,8 +1171,12 @@ function usePersistence() {
       const stored = localStorage.getItem('lasthope-map-image');
       if (stored) setMapImageUrl(stored);
     } catch { /* ignore */ }
+    // Runs after the localStorage restore above so a manually-uploaded
+    // override (if any) already won't get clobbered — loadMapAssets only
+    // fills mapImageUrl in when it's still empty.
+    loadMapAssets();
     initialized.current = true;
-  }, [loadFromServer, loadPresetMarkers, setMapImageUrl, setActiveLayersDirect, setThemeMode]);
+  }, [loadFromServer, loadPresetMarkers, loadMapAssets, setMapImageUrl, setActiveLayersDirect, setThemeMode]);
 
   useEffect(() => {
     if (!initialized.current) return;
