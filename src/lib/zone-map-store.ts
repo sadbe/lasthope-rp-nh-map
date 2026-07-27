@@ -72,6 +72,14 @@ export interface ZoneMapState {
   satelliteSrc: string | null;
   topoSrc: string | null;
   showingTopo: boolean;
+  // Real-world size of the map in meters, for distance/ruler math — NOT the
+  // same as mapImageWidth/Height (image pixels). Those only happen to match
+  // meters if someone exported the satellite texture at exactly 1px=1m,
+  // which most DayZ maps are NOT (a 15360x15360m world is commonly shipped
+  // as a much smaller texture, e.g. 4096x4096). Using pixel size as a stand-
+  // in for meters was the bug here — the ruler would silently report the
+  // wrong distance by whatever that scale factor is.
+  mapWorldSizeM: number;
 
   // Layers
   activeLayers: Record<string, boolean>;
@@ -119,6 +127,8 @@ export interface ZoneMapState {
   setMapImageUrl: (url: string | null) => void;
   setMapImageSize: (w: number, h: number) => void;
   setShowingTopo: (showing: boolean) => void;
+  setMapWorldSizeM: (m: number) => void;
+  loadMapAssets: () => Promise<void>;
   toggleLayer: (catId: string) => void;
   setGeigerValue: (value: number) => void;
   setAnomalyWarning: (warning: string | null) => void;
@@ -276,6 +286,7 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   satelliteSrc: null,
   topoSrc: null,
   showingTopo: false,
+  mapWorldSizeM: MAP_SIZE_M,
   activeLayers: {},
   geigerValue: 0,
   anomalyWarning: null,
@@ -427,22 +438,59 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   // Mod-baked spawns/loot: a static file, not the database (it doesn't
   // change per-player and shouldn't be editable from the UI).
   loadPresetMarkers: async () => {
+    // Ищем в обоих местах: в public/assets/ (куда кладутся остальные
+    // ассеты карты) и в public/data/ — исторический путь. Раньше здесь был
+    // только /data/, из-за чего файл, положенный в assets по инструкции,
+    // просто не находился и метки не появлялись вообще.
+    const paths = ['/assets/spawns.json', '/data/spawns.json'];
+    let data: unknown = null;
+    for (const p of paths) {
+      try {
+        const res = await fetch(p);
+        if (res.ok) { data = await res.json(); break; }
+      } catch { /* пробуем следующий путь */ }
+    }
+    if (!data) return;
+
+    // Калибровочная поправка. Метки считаются из мировых координат мода,
+    // а картинка карты может быть обрезана или смещена относительно мира —
+    // тогда всё уезжает на одну и ту же величину. Подбирается на глаз:
+    // правите два числа в map-meta.json, обновляете страницу, смотрите.
+    //   offsetXPct — плюс двигает метки ВПРАВО
+    //   offsetYPct — плюс двигает метки ВНИЗ
+    // Значения в процентах ширины карты: 1% на карте 20480 м = ~205 метров.
+    let offX = 0, offY = 0, scaleX = 1, scaleY = 1;
     try {
-      const res = await fetch('/data/spawns.json');
-      if (!res.ok) return;
-      const data = await res.json();
-      const list: Marker[] = Array.isArray(data) ? data : (data.markers || []);
-      const cats: Category[] = Array.isArray(data) ? [] : (data.categories || []);
-      if (cats.length) {
-        set(s => ({
-          customCategories: [
-            ...s.customCategories,
-            ...cats.filter(c => !s.customCategories.some(x => x.id === c.id)),
-          ],
-        }));
+      const metaRes = await fetch('/assets/map-meta.json');
+      if (metaRes.ok) {
+        const meta = await metaRes.json();
+        if (typeof meta.offsetXPct === 'number') offX = meta.offsetXPct;
+        if (typeof meta.offsetYPct === 'number') offY = meta.offsetYPct;
+        if (typeof meta.scaleX === 'number' && meta.scaleX > 0) scaleX = meta.scaleX;
+        if (typeof meta.scaleY === 'number' && meta.scaleY > 0) scaleY = meta.scaleY;
       }
-      set({ presetMarkers: list.map((m, i) => ({ ...m, id: m.id || `preset_${i}`, preset: true })) });
-    } catch { /* no spawns.json shipped yet — fine, just nothing to show */ }
+    } catch { /* поправки нет — работаем как есть */ }
+
+    const payload = data as { markers?: Marker[]; categories?: Category[] };
+    const list: Marker[] = Array.isArray(data) ? (data as Marker[]) : (payload.markers || []);
+    const cats: Category[] = Array.isArray(data) ? [] : (payload.categories || []);
+    if (cats.length) {
+      set(s => ({
+        customCategories: [
+          ...s.customCategories,
+          ...cats.filter(c => !s.customCategories.some(x => x.id === c.id)),
+        ],
+      }));
+    }
+    set({
+      presetMarkers: list.map((m, i) => ({
+        ...m,
+        id: m.id || `preset_${i}`,
+        preset: true,
+        xPct: m.xPct * scaleX + offX,
+        yPct: m.yPct * scaleY + offY,
+      })),
+    });
   },
   setView: (view) => set({ view }),
   setAddMode: (mode) => set({ addMode: mode }),
@@ -453,8 +501,8 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
     const newPoints = [...state.measureState.points, point];
     const { totalDistanceM, segmentDistancesM } = calcDistances(
       newPoints,
-      state.mapImageWidth || MAP_SIZE_M,
-      state.mapImageHeight || MAP_SIZE_M
+      state.mapWorldSizeM,
+      state.mapWorldSizeM
     );
     set({ measureState: { active: true, points: newPoints, totalDistanceM, segmentDistancesM } });
   },
@@ -463,8 +511,8 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
     const newPoints = state.measureState.points.slice(0, -1);
     const { totalDistanceM, segmentDistancesM } = calcDistances(
       newPoints,
-      state.mapImageWidth || MAP_SIZE_M,
-      state.mapImageHeight || MAP_SIZE_M
+      state.mapWorldSizeM,
+      state.mapWorldSizeM
     );
     set({ measureState: { active: newPoints.length > 0, points: newPoints, totalDistanceM, segmentDistancesM } });
   },
@@ -476,6 +524,41 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   setMapImageUrl: (url) => set({ mapImageUrl: url }),
   setMapImageSize: (w, h) => set({ mapImageWidth: w, mapImageHeight: h }),
   setShowingTopo: (showing) => set({ showingTopo: showing }),
+  setMapWorldSizeM: (m) => set({ mapWorldSizeM: m }),
+
+  // Looks for map images sitting in /public/assets/ on whatever server this
+  // is hosted on — static files that ship with the deploy, not something
+  // stored per-browser. Silently no-ops if nothing is there yet (falls back
+  // to the manual "load image" button in the menu, same as before).
+  loadMapAssets: async () => {
+    const tryLoadImage = (paths: string[], i = 0): Promise<string | null> =>
+      new Promise((resolve) => {
+        if (i >= paths.length) { resolve(null); return; }
+        const img = new Image();
+        img.onload = () => resolve(paths[i]);
+        img.onerror = () => tryLoadImage(paths, i + 1).then(resolve);
+        img.src = paths[i];
+      });
+
+    const [sat, topo, meta] = await Promise.all([
+      tryLoadImage(['/assets/map-satellite.jpg', '/assets/map-satellite.png']),
+      tryLoadImage(['/assets/map-topo.jpg', '/assets/map-topo.png']),
+      fetch('/assets/map-meta.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+
+    if (sat) {
+      set(s => ({
+        satelliteSrc: sat,
+        // Only take over the displayed image if the player hasn't manually
+        // uploaded their own override for this session.
+        mapImageUrl: s.mapImageUrl ?? sat,
+      }));
+    }
+    if (topo) set({ topoSrc: topo });
+    if (meta && typeof meta.worldSizeM === 'number' && meta.worldSizeM > 0) {
+      set({ mapWorldSizeM: meta.worldSizeM });
+    }
+  },
   toggleLayer: (catId) => set(s => ({
     activeLayers: { ...s.activeLayers, [catId]: !(s.activeLayers[catId] ?? true) }
   })),
