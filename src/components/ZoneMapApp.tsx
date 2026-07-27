@@ -551,12 +551,15 @@ function MapEngine() {
   // Fit map — compute scale first, then use it for tx/ty (fix stale scale bug)
   const fitToViewport = useCallback(() => {
     const vp = viewportRef.current;
-    const img = imgRef.current;
-    if (!vp || !img || !img.naturalWidth) return;
-    const newScale = Math.min(vp.clientWidth / img.naturalWidth, vp.clientHeight / img.naturalHeight);
+    if (!vp) return;
+    // Масштаб считаем от внутренней координатной сетки STAGE_SIZE — именно
+    // в ней рисуются и картинка, и метки. Раньше здесь стоял naturalWidth
+    // картинки, из-за чего карта 8000 px при STAGE_SIZE 20000 выходила
+    // ровно в 2.5 раза крупнее экрана и не вписывалась.
+    const newScale = Math.min(vp.clientWidth, vp.clientHeight) / STAGE_SIZE;
     setView({
-      tx: (vp.clientWidth - img.naturalWidth * newScale) / 2,
-      ty: (vp.clientHeight - img.naturalHeight * newScale) / 2,
+      tx: (vp.clientWidth - STAGE_SIZE * newScale) / 2,
+      ty: (vp.clientHeight - STAGE_SIZE * newScale) / 2,
       scale: newScale,
     });
   }, [setView]);
@@ -727,8 +730,14 @@ function MapEngine() {
     const clusters: Record<string, Marker[]> = {};
     const singles: Marker[] = [];
     for (const m of filteredMarkers) {
-      const cx = Math.round(m.xPct * viewportSize.w / (STAGE_SIZE * view.scale) / CLUSTER_THRESHOLD) * CLUSTER_THRESHOLD;
-      const cy = Math.round(m.yPct * viewportSize.h / (STAGE_SIZE * view.scale) / CLUSTER_THRESHOLD) * CLUSTER_THRESHOLD;
+      // Квантуем ЭКРАННУЮ позицию метки в сетку по CLUSTER_THRESHOLD пикселей.
+      // Прежняя формула умножала проценты на ширину окна и делила на размер
+      // сцены — величина получалась не в пикселях, и группировка работала
+      // как придётся: при одних зумах слипалось всё подряд, при других ничего.
+      const sx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
+      const sy = (m.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
+      const cx = Math.round(sx / CLUSTER_THRESHOLD) * CLUSTER_THRESHOLD;
+      const cy = Math.round(sy / CLUSTER_THRESHOLD) * CLUSTER_THRESHOLD;
       const key = `${cx}_${cy}`;
       if (!clusters[key]) clusters[key] = [];
       clusters[key].push(m);
@@ -740,6 +749,20 @@ function MapEngine() {
     }
     return singles;
   }, [filteredMarkers, viewportSize, view.scale]);
+
+  // Отсекаем всё, что за пределами экрана. В spawns.json почти 8000 точек,
+  // и держать их все в DOM (каждая — div со свечением и карточкой) телефон
+  // не тянет: тормозит и панорамирование, и зум. Рисуем только видимое плюс
+  // небольшой запас по краям, чтобы при сдвиге не было пустых полей.
+  const visibleMarkers = useMemo(() => {
+    if (viewportSize.w === 0) return clustered;
+    const pad = 120;
+    return clustered.filter(m => {
+      const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
+      const my = (m.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
+      return mx > -pad && mx < viewportSize.w + pad && my > -pad && my < viewportSize.h + pad;
+    });
+  }, [clustered, view, viewportSize]);
 
   // Measure point screen coords
   const measureScreenPts = useMemo(() => {
@@ -767,10 +790,20 @@ function MapEngine() {
         <img ref={imgRef} src={mapImageUrl} alt="Map" onLoad={handleImageLoad}
           style={{
             position: 'absolute',
-            width: STAGE_SIZE * view.scale,
-            height: STAGE_SIZE * view.scale,
-            left: view.tx, top: view.ty,
-            filter: 'grayscale(0.15) contrast(1.1) brightness(0.95)',
+            left: 0, top: 0,
+            // Размер фиксированный, движение и зум — через transform.
+            // Раньше здесь на каждом кадре пересчитывались width/height,
+            // и браузер заново раскладывал и растрировал картинку 8000 px
+            // при каждом сдвиге пальца. transform композитится на видеокарте
+            // и раскладку не трогает.
+            width: STAGE_SIZE,
+            height: STAGE_SIZE,
+            transform: `translate3d(${view.tx}px, ${view.ty}px, 0) scale(${view.scale})`,
+            transformOrigin: '0 0',
+            willChange: 'transform',
+            // CSS-фильтр поверх такой картинки заставлял перерисовывать её
+            // целиком на каждом кадре. Тонировка убрана — при желании её
+            // дешевле запечь в сам файл.
             pointerEvents: 'none',
           }} draggable={false} />
       )}
@@ -786,7 +819,7 @@ function MapEngine() {
         </svg>
       )}
 
-      {clustered.map(m => {
+      {visibleMarkers.map(m => {
         const cat = catIdx[m.cat] || BUILTIN_CATEGORIES[BUILTIN_CATEGORIES.length - 1];
         const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
         const my = (m.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
