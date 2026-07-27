@@ -1,5 +1,0 @@
-{
-  "worldSizeM": 20480,
-  "mapName": "NH ChernobylZone",
-  "note": "Размер мира определён по максимальным координатам в mapgrouppos.xml (X до 19956, Z до 20256)"
-}
