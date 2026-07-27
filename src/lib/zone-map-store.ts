@@ -244,8 +244,9 @@ export function calcDistances(points: MeasurePoint[], mapW: number, mapH: number
   let total = 0;
 
   for (let i = 1; i < points.length; i++) {
-    const dx = (points[i].xPct - points[i - 1].xPct) * mapW;
-    const dy = (points[i].yPct - points[i - 1].yPct) * mapH;
+    // xPct/yPct — проценты (0-100), делим на 100. Без этого линейка врала в 100 раз.
+    const dx = ((points[i].xPct - points[i - 1].xPct) / 100) * mapW;
+    const dy = ((points[i].yPct - points[i - 1].yPct) / 100) * mapH;
     const dist = Math.sqrt(dx * dx + dy * dy);
     segments.push(dist);
     total += dist;

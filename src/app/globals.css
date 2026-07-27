@@ -452,7 +452,8 @@ html { touch-action: manipulation; }
    ========================================================= */
 
 .marker-glow {
-  animation: markerPulse 2.5s ease-in-out infinite;
+  /* Статичное свечение: анимация filter перерисовывала каждый маркер каждый кадр. */
+  filter: drop-shadow(0 0 3px var(--glow-color));
 }
 
 @keyframes markerPulse {
@@ -1306,4 +1307,28 @@ html { touch-action: manipulation; }
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+
+/* ===== МОБИЛЬНЫЙ ПЕРФ-РЕЖИМ: глушим бесконечные полноэкранные
+   анимации на телефонах, слои остаются статично ===== */
+@media (max-width: 640px), (prefers-reduced-motion: reduce) {
+  .zone-app::after,
+  .dead-inside-title::before,
+  .dead-inside-title::after,
+  .dead-inside-title .title-dissolve,
+  .dead-inside-title .title-vhs,
+  .dead-strikethrough::after,
+  .dust-particle,
+  .crt-noise,
+  .rad-pulse-overlay,
+  .blood-ghost,
+  .pda-sweep::after,
+  .intro-glitch::before,
+  .intro-glitch::after {
+    animation: none !important;
+  }
+  .rad-pulse-overlay { opacity: 0.3; }
+  .blood-ghost { opacity: 0; }
+  .dust-particle { display: none; }
 }
