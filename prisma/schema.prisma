@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== AUTHENTICATION (P0 fix — R1) =====
+// Admin users for the NextAuth credentials provider.
+// Password is stored as bcrypt hash, never plaintext.
+// Seeded via `bun run db:seed` from .env ADMIN_EMAIL/ADMIN_PASSWORD_HASH.
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   // bcrypt hash
+  name         String?
+  role         String   @default("admin") // future: editor/viewer
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Legacy scaffold models — kept for backward compat, not used by app.
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  published Boolean  @default(false)
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===== ZONE MAP: shared, server-side data =====
+// These two tables are the actual fix for "everyone should see the same
+// points" — previously markers only ever lived in each player's browser
+// localStorage, so nobody's additions were visible to anyone else.
+
+model MapMarker {
+  id        String   @id @default(cuid())
+  name      String
+  cat       String
+  xPct      Float
+  yPct      Float
+  note      String?
+  imageUrl  String?  // screenshot / photo of what's at the point
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MapCategory {
+  id        String   @id // client-supplied slug, e.g. "custom_1234"
+  name      String
+  color     String
+  icon      String
+  createdAt DateTime @default(now())
+}

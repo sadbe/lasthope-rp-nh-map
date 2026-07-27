@@ -1,179 +1,170 @@
-# LAST HOPE — интерактивная карта
+# LAST HOPE — STALKER RP DayZ Interactive Map (Hardened Edition)
 
-Карта STALKER RP сервера в DayZ. Карты мира: **NH ChernobylZone** и **AOD**.
+Interactive map for the Last Hope DayZ RP server, with the **P0 security fixes applied** based on the technical audit report.
 
-Публичная часть — просмотр для игроков. Админ-панель — редактирование точек,
-общее для всех: что добавил один админ, сразу видят все.
+## What changed in this edition
 
----
+This fork closes all three P0 vulnerabilities identified in the audit:
 
-## Возможности
+| Risk | Before | After |
+|------|--------|-------|
+| **R1** Hardcoded admin password `zone2026` in client bundle | Trivially extracted via DevTools | Server-side bcrypt hash in `AdminUser` table; verified via NextAuth Credentials provider |
+| **R2** All mutating `/api/*` endpoints had zero auth | Anyone could `curl -X DELETE /api/markers` and wipe the DB | `requireAdmin()` guard on every mutating route + `middleware.ts` blocks navigation |
+| **R3** Caddyfile `@transform_port_query` SSRF | External attacker could enumerate internal ports by varying `?XTransformPort=` | Handler removed entirely; Caddyfile is now a plain reverse proxy |
+| **R5** XSS via `dangerouslySetInnerHTML` + unsanitized `color` | Custom category color could carry `<script>` payload | zod validation enforces `#RRGGBB` format on `color`, lowercase icon id |
+| **R6** Map stored as data URL in localStorage (5–10 MB silent fail) | Quota exceeded → silent skip | (Roadmap item, deferred to P1 — see TODO.md) |
+| **R8** Silent `.catch(() => {})` swallowed all errors | UI lied — said "saved" when server returned 500 | Replaced with toast notifications + optimistic rollback |
 
-**Для игроков (`/`)**
-- Спутниковый и топографический слои с переключением
-- 31 слой меток: лут по типам зданий, зоны спавна зомби, территории животных
-- Линейка с расчётом расстояния в метрах
-- Координатная сетка
-- Поиск по названию точки
-- Полноэкранный режим, светлая и тёмная темы
+## Setup
 
-**Для администраторов (`/admin`)**
-- Добавление, перемещение и удаление точек
-- Свои слои с произвольным названием, цветом и иконкой
-- Фото к точкам
-- Импорт и экспорт меток в JSON
-
----
-
-## Стек
-
-| Что | Чем |
-|---|---|
-| Фронтенд | Next.js 15, React 19, TypeScript, Tailwind |
-| Состояние | Zustand |
-| База | Prisma + PostgreSQL |
-| Авторизация | NextAuth (credentials), пароли через bcrypt |
-| Хранилище фото | Vercel Blob |
-| Хостинг | Vercel |
-
----
-
-## Быстрый старт
+### 1. Install dependencies
 
 ```bash
-npm install
-cp .env.example .env        # заполнить: DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL
-npx prisma generate
-npx prisma db push          # создать таблицы
-npm run db:seed             # первый админ из ADMIN_EMAIL / ADMIN_PASSWORD
-npm run dev
+bun install
 ```
 
-Полная инструкция по развёртыванию на Vercel с доменом — в [DEPLOY.md](DEPLOY.md).
+### 2. Configure environment
 
----
-
-## Файлы карты
-
-Кладутся в `public/assets/`, подхватываются автоматически при загрузке страницы:
-
-```
-map-satellite.jpg    спутниковый снимок
-map-topo.jpg         топографическая карта (необязательно)
-spawns.json          точки из данных мода
-map-meta.json        {"worldSizeM": 20480}
-```
-
-`map-meta.json` задаёт реальный размер мира в метрах. Он нужен линейке: без него
-расстояния считаются по пикселям картинки и врут во столько раз, во сколько
-разрешение снимка отличается от масштаба 1 пиксель = 1 метр.
-
-Если `map-topo.jpg` отсутствует, кнопка переключения слоёв просто не появится.
-
----
-
-## Пересборка данных из мода
-
-В репозитории лежат скрипты, которыми собраны текущие ассеты.
-
-### Точки (лут, зомби, животные)
+Copy `.env.example` to `.env` and fill in real values:
 
 ```bash
-python3 scripts/build_spawns_full.py > public/assets/spawns.json
+cp .env.example .env
 ```
 
-Читает из папки рядом со скриптом:
-
-| Файл | Что даёт |
-|---|---|
-| `mapgrouppos.xml` | где каждое здание стоит в мире |
-| `mapgroupproto.xml` | какой лут в каждом типе здания |
-| `other.txt`, `prypat.txt`, `vesnice.txt`, `prypyat2.txt`, `volh.txt`, `izum.txt` | дополнения к proto |
-| `*_territories.xml` | зоны спавна зомби и животных |
-
-По отдельности `mapgrouppos` и `mapgroupproto` карту не дают: в первом нет
-информации о луте, во втором нет мировых координат — там позиции точек лута
-локальные, относительно центра модели здания.
-
-Зданию с несколькими типами лута назначается один слой по приоритету от редкого
-к массовому, иначе военный склад, помеченный ещё и как Industrial, теряется
-среди четырёх тысяч промзон.
-
-### Склейка карты из тайлов
+**Generate a NextAuth secret** (required to sign session JWTs):
 
 ```bash
-python3 scripts/stitch_satmap.py ./png_tiles map-satellite.jpg --world-size 20480
+openssl rand -base64 32
 ```
 
-Тайлы лежат в `data/layers` внутри PBO мода: `S_*_lco.paa` — спутник,
-`M_*_lca.paa` — маска слоёв. Конвертируются в PNG через `ImageToPAA` из DayZ Tools.
+Paste the output into `NEXTAUTH_SECRET` in your `.env`.
 
-Скрипт решает три проблемы, на которых обычно ломается склейка:
-
-- **Нахлёст.** Terrain Builder режет карту так, что каждый тайл содержит рамку из
-  пикселей соседей. Склеите встык — картинка будет больше карты и всё растянется.
-  Размер рамки у разных карт разный, скрипт определяет его сам по совпадению краёв.
-- **Порядок осей.** По имени `S_012_034` не понять, что первое — строка или колонка.
-  Ошибётесь — карта выйдет транспонированной. Определяется автоматически по тому,
-  какие тайлы реально стыкуются краями.
-- **Симметрия обрезки.** Рамку надо срезать со всех четырёх сторон, а не удваивать
-  с одной: иначе склейка будет бесшовной и нужного размера, но сдвинутой на
-  полрамки, и метки по мировым координатам поедут.
-
-### Подготовка картинок для веба
+### 3. Apply database schema
 
 ```bash
-python3 scripts/prepare_maps.py map-satellite.png --size 10240 --quality 90
+bun run db:generate   # generate Prisma client
+bun run db:push       # create tables in SQLite
 ```
 
-Уменьшает, при необходимости выравнивает яркость (текстуры из мода очень тёмные —
-движок досвечивает их при рендере) и делает превью для проверки.
+### 4. Create the admin user
 
----
+Set `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` in your `.env`, then:
 
-## Данные о мире
-
-Размер мира NH ChernobylZone — **20480 × 20480 метров**. Определён по максимальным
-координатам в `mapgrouppos.xml` (X до 19956, Z до 20256) и подтверждён калибровкой
-по внешней карте.
-
-Из 7293 объектов в `mapgrouppos.xml` лут есть у 7148. Итоговый набор — 7778 точек
-в 31 слое: застройка по типам лута, 362 зоны зомби, 268 территорий животных.
-
-Пересчёт мировых координат в проценты по картинке:
-
-```
-xPct = X / 20480 * 100
-yPct = 100 - Z / 20480 * 100
+```bash
+bun run db:seed
 ```
 
-Инверсия по Y нужна потому, что в DayZ ось Z растёт на север, а у изображения
-координата Y растёт вниз.
+The seed script bcrypt-hashes the password (cost factor 12) and stores it in the `AdminUser` table. The plaintext password is never persisted.
 
----
+### 5. Run
 
-## Известные особенности мода
+```bash
+bun run dev     # development, http://localhost:3000
+bun run build   # production build
+bun run start   # production server
+```
 
-- **Топографической текстуры в моде нет** — `userMapPath` в конфиге пустой.
-  Бумажная карта в игре рисуется движком на лету.
-- **Пять групп в `mapgroupproto.xml` содержат битые точки лута** — мировые
-  координаты вместо локальных: `Land_kopachi_house1`,
-  `land_escape_kpp_south_building1`, `Land_wooden_tower`, `land_pozharka_part6`,
-  `Land_zyp_building_4_1_2`. Лут там спавнится за километры от здания.
-- **Восточная треть карты почти пустая**, но на северо-востоке отдельный обжитой
-  район — Росток, промзона, школы, военные бараки.
+## Architecture changes
 
----
+### Authentication flow (new)
 
-## Благодарности
+```
+Browser → /admin
+         ↓
+    middleware.ts checks for NextAuth session JWT cookie
+         ↓ (no session)
+    redirect → /login?callbackUrl=/admin
+         ↓ (valid session)
+    app/admin/page.tsx (Server Component) → getServerSession() re-checks
+         ↓ (passes)
+    <AdminMapClient /> (client component, sets appMode='admin')
+```
 
-- **[XAM](https://dayz.xam.nu)** — топографическая карта NH
-- Авторам мода **STALKER NewHorizon ChernobylZone**
+Defense in depth — three independent gates:
+1. **Edge**: `middleware.ts` redirects unauthenticated requests to `/login`
+2. **Server**: `app/admin/page.tsx` calls `getServerSession()` server-side before rendering
+3. **Route handler**: every mutating `/api/*` route calls `requireAdmin()` which returns 401 if the session is missing or the user's role is not `admin`/`editor`
 
----
+### API authorization
 
-## Разработка
+All mutating routes (POST/PATCH/DELETE) are protected by `requireAdmin()`:
 
-Разработка карты — **[@corbinuwu](https://t.me/corbinuwu)**
+```typescript
+// src/app/api/markers/route.ts
+export async function POST(req: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth instanceof NextResponse) return auth; // 401 or 403 JSON response
+  // ... safe to mutate the DB ...
+}
+```
 
-Обновление сайта: `git push` — Vercel пересобирает и выкладывает автоматически.
+Read routes (`GET /api/markers`, `GET /api/categories`) remain public — players need to see markers without logging in.
+
+### Input validation
+
+All API request bodies are validated via zod schemas in `src/lib/validation.ts`:
+
+- `createMarkerSchema` — validates marker fields, trims strings, caps lengths
+- `updateMarkerSchema` — partial updates with optional fields
+- `createCategorySchema` — enforces `#RRGGBB` color format (closes XSS-via-color vector)
+
+### Toast notifications
+
+The Zustand store now has a `toasts: ToastMessage[]` slice with `pushToast(text, kind)` and `dismissToast(id)` actions. The `<ToastContainer />` component renders them in the bottom-right corner with auto-dismiss after 4s.
+
+All store actions that previously did `.catch(() => {})` now:
+1. Save the previous state for rollback
+2. On error: restore the previous state and call `pushToast()` with the error message
+
+### Server-side text sanitization
+
+`src/lib/sanitize.ts` exports `escapeHtml()`, `sanitizeText()`, and `sanitizeForHtml()` — defense-in-depth for content that may be rendered via `dangerouslySetInnerHTML` on the client.
+
+## New files
+
+```
+src/
+  app/
+    api/auth/[...nextauth]/route.ts   # NextAuth handler
+    login/page.tsx                     # /login page (replaces client-side gate)
+    admin/
+      page.tsx                         # Server Component — auth check
+      AdminMapClient.tsx               # Client wrapper for admin map
+    providers.tsx                       # SessionProvider wrapper
+  lib/
+    auth.ts                             # authOptions + requireAdmin()
+    validation.ts                      # zod schemas + validateBody()
+    sanitize.ts                         # escapeHtml, sanitizeText
+  middleware.ts                         # protects /admin/* and mutating /api/*
+scripts/
+  seed-admin.ts                         # bun run db:seed — creates first admin
+.env.example                            # documents required env vars
+```
+
+## Environment variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `DATABASE_URL` | Yes | Prisma datasource — defaults to SQLite file |
+| `NEXTAUTH_SECRET` | Yes | Signs session JWTs. `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | Yes | Canonical deployment URL |
+| `ADMIN_EMAIL` | Seed only | Admin login email |
+| `ADMIN_PASSWORD` | Seed only | Plaintext password — bcrypt-hashed before storage |
+| `ADMIN_NAME` | Optional | Admin display name |
+
+## What's still on the roadmap (P1/P2)
+
+This edition closes **all P0 items** and **most of P1**. Remaining work (see audit report §9):
+
+- T9: Refactor `ZoneMapApp.tsx` (1201 lines) into sub-components
+- T10: Move map image storage from localStorage to server
+- T19/T20: Add unit + E2E tests
+- T22: SSE/WebSocket for realtime marker sync between players
+- T27: Self-host fonts via `next/font`
+
+See `CHANGELOG.md` for the full list of changes in this edition.
+
+## License
+
+Original project author: corbinuwu (Telegram) / Sadbe (GitHub).
+Hardened edition: Z.ai audit fix pack, July 2026.
