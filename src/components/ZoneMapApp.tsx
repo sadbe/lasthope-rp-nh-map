@@ -171,6 +171,13 @@ function LayersPanel() {
   const markerScale = useZoneMapStore(s => s.markerScale);
   const setMarkerScale = useZoneMapStore(s => s.setMarkerScale);
   const allCats = useMemo(() => [...BUILTIN_CATEGORIES, ...customCategories], [customCategories]);
+  const presetMarkers = useZoneMapStore(s => s.presetMarkers);
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const m of presetMarkers) c[m.cat] = (c[m.cat] || 0) + 1;
+    for (const m of markers) c[m.cat] = (c[m.cat] || 0) + 1;
+    return c;
+  }, [presetMarkers, markers]);
 
   const handleDeleteLayer = useCallback((e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
@@ -184,7 +191,7 @@ function LayersPanel() {
   return (
     <div className="panel-from-left pda-sweep map-panel map-panel-left">
       <div className="map-panel-header">
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>
+        <div className="panel-title" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>
           СЛОИ ▾
         </div>
       </div>
@@ -211,21 +218,19 @@ function LayersPanel() {
           const iconColor = active ? cat.color : INACTIVE_ICON_COLOR;
           const isBuiltin = BUILTIN_CATEGORIES.some(b => b.id === cat.id);
           return (
-            <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', cursor: 'pointer' }}
-              onClick={() => toggleLayer(cat.id)}>
-              <div style={{
-                width: 10, height: 10, borderRadius: 2,
+            <div key={cat.id} className="layer-row" onClick={() => toggleLayer(cat.id)}>
+              <div className="layer-dot" style={{
                 border: `1px solid ${active ? cat.color : '#333'}`,
                 background: active ? cat.color : '#181818',
                 opacity: active ? 0.7 : 0.3,
               }} />
               <span dangerouslySetInnerHTML={{ __html: iconSvg(cat.icon, iconColor) }} />
-              <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: 9, color: active ? 'var(--text-pale)' : 'var(--text-dim)',
-                letterSpacing: '0.05em', textTransform: 'uppercase', flex: 1,
-              }}>
+              <span className="layer-name" style={{ color: active ? 'var(--text-pale)' : 'var(--text-dim)' }}>
                 {cat.name}
               </span>
+              {/* Сколько меток в слое: без этого невозможно понять, почему
+                  один тумблер меняет всё, а другой ничего. */}
+              <span className="layer-count">{counts[cat.id] || 0}</span>
               {appMode === 'admin' && !isBuiltin && (
                 <span onClick={(e) => handleDeleteLayer(e, cat.id, cat.name)}
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)', padding: '2px 4px' }}>

@@ -214,45 +214,9 @@ html { touch-action: none; overscroll-behavior: none; }
   color: var(--text-bright);
 }
 
-.dead-inside-title::before {
-  content: attr(data-text);
-  position: absolute; top: 0; left: 0;
-  width: 100%; height: 100%;
-  color: #ff4757;
-  clip-path: polygon(0 0, 100% 0, 100% 40%, 0 40%);
-  animation: chromaticShift1 3s infinite linear alternate-reverse;
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-.dead-inside-title::after {
-  content: attr(data-text);
-  position: absolute; top: 0; left: 0;
-  width: 100%; height: 100%;
-  color: #00d9ff;
-  clip-path: polygon(0 60%, 100% 60%, 100% 100%, 0 100%);
-  animation: chromaticShift2 4s infinite linear alternate-reverse;
-  opacity: 0.35;
-  pointer-events: none;
-}
-
-@keyframes chromaticShift1 {
-  0% { transform: translate(0); }
-  20% { transform: translate(-2px, 1px); }
-  40% { transform: translate(2px, -1px); }
-  60% { transform: translate(-1px, 2px); }
-  80% { transform: translate(1.5px, -0.5px); }
-  100% { transform: translate(0); }
-}
-
-@keyframes chromaticShift2 {
-  0% { transform: translate(0); }
-  15% { transform: translate(1.5px, -1px); }
-  35% { transform: translate(-2px, 1px); }
-  55% { transform: translate(1px, 0.5px); }
-  75% { transform: translate(-1.5px, -1px); }
-  100% { transform: translate(0); }
-}
+/* Хроматическая кайма (красный и бирюзовый двойники поверх заголовка)
+   убрана: буквы теперь чисто белые. Дрожание и VHS-срывы остались —
+   они не красят текст, а только двигают его. */
 
 /* Combined dissolve + VHS animation for title */
 .dead-inside-title .title-dissolve.title-vhs {
@@ -795,8 +759,11 @@ html { touch-action: none; overscroll-behavior: none; }
      меряет ResizeObserver и кладёт в --header-h: она разная на разных
      ширинах, и подбирать константу бессмысленно. */
   top: calc(var(--header-h, 124px) + 6px);
-  bottom: 0;
-  width: 220px;
+  /* Футер прибит к низу экрана и лежит ВЫШЕ панели по z-index, поэтому
+     нижние строки панели и кнопка «Закрыть» оказывались под ним. Высоту
+     футера меряем так же, как высоту шапки. */
+  bottom: calc(var(--footer-h, 26px) + 4px);
+  width: 264px;
   background: var(--panel);
   z-index: 100;
   display: flex;
@@ -1431,3 +1398,18 @@ html { touch-action: none; overscroll-behavior: none; }
 }
 .layer-size-range { width: 100%; accent-color: var(--pale); cursor: pointer; }
 .zone-ring { z-index: 1; }
+
+/* ===== ПАНЕЛЬ СЛОЁВ: РАЗМЕРЫ ===== */
+/* Было 9px моноширинным в верхнем регистре — на 42 категории такой список
+   читается только с лупой. */
+.map-panel-header .panel-title { font-size: 12px !important; }
+.layer-tool-row { font-size: 11px; padding: 6px 0; }
+.layer-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; }
+.layer-row .layer-name {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em;
+  text-transform: uppercase; flex: 1; line-height: 1.25;
+}
+.layer-row .layer-dot { width: 12px; height: 12px; border-radius: 2px; flex: 0 0 auto; }
+.layer-row svg { width: 18px; height: 18px; }
+.layer-tools svg { width: 18px; height: 18px; }
+.layer-count { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }

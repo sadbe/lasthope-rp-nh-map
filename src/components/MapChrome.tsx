@@ -138,8 +138,19 @@ export function MiniMap() {
 
 // Футер: правь тексты и ссылки прямо здесь.
 export function SiteFooter() {
+  const footerRef = useRef<HTMLDivElement>(null);
+  // Панели отсчитывают низ от футера — отдаём его высоту в CSS-переменную.
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    const apply = () => document.documentElement.style.setProperty('--footer-h', `${el.offsetHeight}px`);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div className="site-footer">
+    <div className="site-footer" ref={footerRef}>
       <div>LAST HOPE · STALKER RP · DAYZ — интерактивная карта Зоны</div>
       <div className="foot-right">
         <span>Разработка: sadbe</span>
