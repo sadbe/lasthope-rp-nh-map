@@ -1394,3 +1394,25 @@ html { touch-action: none; overscroll-behavior: none; }
   .site-footer { font-size: 8px; padding: 3px 8px; }
   .site-footer .foot-right { gap: 8px; }
 }
+
+/* ===== МИНИКАРТА ===== */
+.mini-map {
+  position: fixed; right: 18px; bottom: 34px; z-index: 245;
+  background: var(--panel); border: 1px solid var(--border);
+  padding: 4px; border-radius: 3px; line-height: 0;
+}
+.mini-box { position: relative; overflow: hidden; cursor: crosshair; background: var(--bg); }
+.mini-view {
+  position: absolute; border: 1px solid var(--text-bright);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.mini-toggle {
+  position: absolute; top: -1px; right: -1px; z-index: 2;
+  width: 18px; height: 18px; padding: 0; line-height: 1;
+  background: var(--panel-raised); border: 1px solid var(--border);
+  color: var(--text-pale); font-family: var(--font-mono); font-size: 11px; cursor: pointer;
+}
+.mini-toggle:hover { color: var(--text-bright); border-color: var(--pale-dim); }
+.mini-collapsed { padding: 0; }
+@media (max-width: 640px) { .mini-map { display: none; } }

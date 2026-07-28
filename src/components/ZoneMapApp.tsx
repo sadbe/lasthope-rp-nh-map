@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { ZoomRail, SiteFooter } from '@/components/MapChrome';
+import { ZoomRail, SiteFooter, MiniMap } from '@/components/MapChrome';
 import {
   useZoneMapStore,
   BUILTIN_CATEGORIES,
@@ -501,6 +501,62 @@ function MarkerSheet() {
   return <ViewMarkerSheet marker={marker} cat={cat} />;
 }
 
+// ===== MARKER LAYER =====
+// Метки живут в координатах СЦЕНЫ и не зависят ни от сдвига, ни от масштаба:
+// и то и другое делает transform родителя. Поэтому React перерисовывает
+// список только когда реально сменился набор видимых меток, а не на каждый
+// кадр панорамы или щипка. Иконки не должны расти вместе с картой, поэтому
+// каждая метка гасит масштаб родителя через переменную --inv.
+const MarkersLayer = React.memo(function MarkersLayer(
+  { markers, catIdx }: { markers: Marker[]; catIdx: Record<string, Category> }
+) {
+  return (
+    <>
+      {markers.map(m => {
+        const cat = catIdx[m.cat] || BUILTIN_CATEGORIES[BUILTIN_CATEGORIES.length - 1];
+        const mx = (m.xPct / 100) * STAGE_SIZE;
+        const my = (m.yPct / 100) * STAGE_SIZE;
+        const isCluster = m.id.startsWith('cluster_');
+        return (
+          <div key={m.id} className="marker-glow marker-hover-wrap" style={{
+            position: 'absolute', left: mx, top: my,
+            transform: 'translate(-50%, -50%) scale(var(--inv, 1))',
+            '--glow-color': cat.color,
+          } as React.CSSProperties}>
+            {isCluster ? (
+              <div style={{ width: 28, height: 28, background: `${cat.color}33`, border: `1px solid ${cat.color}`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 9, color: cat.color }}>
+                {m.name}
+              </div>
+            ) : (
+              <>
+                <span className="marker-icon-only" dangerouslySetInnerHTML={{ __html: iconSvg(cat.icon, cat.color) }} />
+                <div className="marker-hover-tip marker-tip-card" style={{
+                  position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)',
+                  zIndex: 20,
+                }}>
+                  {m.imageUrl && (
+                    <div className="tip-image-wrap">
+                      <img src={m.imageUrl} alt={m.name} className="tip-image" />
+                    </div>
+                  )}
+                  <div className="tip-header">
+                    <span className="tip-icon" dangerouslySetInnerHTML={{ __html: iconSvg(cat.icon, cat.color) }} />
+                    <span className="tip-name">{m.name}</span>
+                    <span className="tip-cat-dot" style={{ background: cat.color }} />
+                  </div>
+                  <div className="tip-cat">{cat.name}</div>
+                  {m.note && <div className="tip-note">{m.note.slice(0, 80)}{m.note.length > 80 ? '...' : ''}</div>}
+                  <div className="tip-coords">{m.xPct.toFixed(1)}% · {m.yPct.toFixed(1)}%</div>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
 // ===== MAP ENGINE =====
 function MapEngine() {
   const view = useZoneMapStore(s => s.view);
@@ -805,20 +861,30 @@ function MapEngine() {
     return result;
   }, [all, activeLayers, searchQuery]);
 
+  // Зум меняет scale непрерывно, и на каждом кадре щипка заново считались
+  // кластеры (проход по тысячам точек) и список видимого. Квантуем масштаб
+  // по ступеням ×1.1: пересчёт происходит несколько раз за жест, а не 60
+  // раз в секунду. На глаз разницы нет — 10% по размеру ячейки кластера.
+  const scaleStep = useMemo(
+    () => Math.pow(1.1, Math.round(Math.log(view.scale) / Math.log(1.1))),
+    [view.scale]
+  );
+
   // Clustering
   const clustered = useMemo(() => {
     if (viewportSize.w === 0) return filteredMarkers;
     const clusters: Record<string, Marker[]> = {};
     const singles: Marker[] = [];
+    // Ячейка в координатах СЦЕНЫ: CLUSTER_THRESHOLD пикселей экрана,
+    // пересчитанные обратно в сцену. Раньше квантовалась экранная позиция,
+    // то есть результат зависел от tx/ty — а они в зависимостях useMemo не
+    // стояли, и при панораме группировка «залипала» в старом положении.
+    const cell = CLUSTER_THRESHOLD / scaleStep;
     for (const m of filteredMarkers) {
-      // Квантуем ЭКРАННУЮ позицию метки в сетку по CLUSTER_THRESHOLD пикселей.
-      // Прежняя формула умножала проценты на ширину окна и делила на размер
-      // сцены — величина получалась не в пикселях, и группировка работала
-      // как придётся: при одних зумах слипалось всё подряд, при других ничего.
-      const sx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
-      const sy = (m.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
-      const cx = Math.round(sx / CLUSTER_THRESHOLD) * CLUSTER_THRESHOLD;
-      const cy = Math.round(sy / CLUSTER_THRESHOLD) * CLUSTER_THRESHOLD;
+      const sx = (m.xPct / 100) * STAGE_SIZE;
+      const sy = (m.yPct / 100) * STAGE_SIZE;
+      const cx = Math.round(sx / cell);
+      const cy = Math.round(sy / cell);
       const key = `${cx}_${cy}`;
       if (!clusters[key]) clusters[key] = [];
       clusters[key].push(m);
@@ -829,7 +895,7 @@ function MapEngine() {
       else singles.push({ id: `cluster_${key}`, name: `${group.length}`, cat: group[0].cat, xPct: group.reduce((s, m) => s + m.xPct, 0) / group.length, yPct: group.reduce((s, m) => s + m.yPct, 0) / group.length, preset: false });
     }
     return singles;
-  }, [filteredMarkers, viewportSize, view.scale]);
+  }, [filteredMarkers, viewportSize, scaleStep]);
 
   // Обработчик клика объявлен выше по файлу, а clustered — здесь, поэтому
   // напрямую в замыкание его не взять (TDZ в массиве зависимостей). Ref
@@ -847,13 +913,20 @@ function MapEngine() {
   const qy = Math.round(view.ty / CULL_STEP) * CULL_STEP;
   const visibleMarkers = useMemo(() => {
     if (viewportSize.w === 0) return clustered;
-    const pad = CULL_STEP + 150;
+    // Запас с избытком: и на шаг квантования сдвига, и на то, что scaleStep
+    // отличается от настоящего масштаба максимум на 10%. Иначе метки
+    // «выщёлкивались» бы у краёв во время щипка.
+    const pad = CULL_STEP + 200 + Math.max(viewportSize.w, viewportSize.h) * 0.1;
+    const x0 = (-qx - pad) / scaleStep;
+    const x1 = (viewportSize.w - qx + pad) / scaleStep;
+    const y0 = (-qy - pad) / scaleStep;
+    const y1 = (viewportSize.h - qy + pad) / scaleStep;
     return clustered.filter(m => {
-      const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + qx;
-      const my = (m.yPct / 100) * STAGE_SIZE * view.scale + qy;
-      return mx > -pad && mx < viewportSize.w + pad && my > -pad && my < viewportSize.h + pad;
+      const sx = (m.xPct / 100) * STAGE_SIZE;
+      const sy = (m.yPct / 100) * STAGE_SIZE;
+      return sx > x0 && sx < x1 && sy > y0 && sy < y1;
     });
-  }, [clustered, qx, qy, view.scale, viewportSize]);
+  }, [clustered, qx, qy, scaleStep, viewportSize]);
 
   // Measure point screen coords
   const measureScreenPts = useMemo(() => {
@@ -950,54 +1023,20 @@ function MapEngine() {
         );
       })}
 
-      {/* Все маркеры в ОДНОМ transform-контейнере: при панораме меняется
-          одна строка transform вместо left/top у сотен элементов. */}
+      {/* Весь слой меток едет и масштабируется ОДНОЙ строкой transform.
+          Раньше при зуме у каждой метки пересчитывались left/top, то есть
+          браузер заново раскладывал сотни элементов на каждый кадр щипка —
+          отсюда рывки. Теперь меняется только этот transform, а --inv
+          гасит масштаб внутри меток, чтобы иконки не разбухали. */}
       <div style={{
         position: 'absolute', left: 0, top: 0, width: 0, height: 0,
-        transform: `translate3d(${view.tx}px, ${view.ty}px, 0)`,
+        transform: `translate3d(${view.tx}px, ${view.ty}px, 0) scale(${view.scale})`,
+        transformOrigin: '0 0',
         willChange: 'transform',
         zIndex: 10,
-      }}>
-      {visibleMarkers.map(m => {
-        const cat = catIdx[m.cat] || BUILTIN_CATEGORIES[BUILTIN_CATEGORIES.length - 1];
-        const mx = (m.xPct / 100) * STAGE_SIZE * view.scale;
-        const my = (m.yPct / 100) * STAGE_SIZE * view.scale;
-        const isCluster = m.id.startsWith('cluster_');
-        return (
-          <div key={m.id} className="marker-glow marker-hover-wrap" style={{
-            position: 'absolute', left: mx, top: my, transform: 'translate(-50%, -50%)',
-            '--glow-color': cat.color,
-          } as React.CSSProperties}>
-            {isCluster ? (
-              <div style={{ width: 28, height: 28, background: `${cat.color}33`, border: `1px solid ${cat.color}`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 9, color: cat.color }}>
-                {m.name}
-              </div>
-            ) : (
-              <>
-                <span className="marker-icon-only" dangerouslySetInnerHTML={{ __html: iconSvg(cat.icon, cat.color) }} />
-                <div className="marker-hover-tip marker-tip-card" style={{
-                  position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)',
-                  zIndex: 20,
-                }}>
-                  {m.imageUrl && (
-                    <div className="tip-image-wrap">
-                      <img src={m.imageUrl} alt={m.name} className="tip-image" />
-                    </div>
-                  )}
-                  <div className="tip-header">
-                    <span className="tip-icon" dangerouslySetInnerHTML={{ __html: iconSvg(cat.icon, cat.color) }} />
-                    <span className="tip-name">{m.name}</span>
-                    <span className="tip-cat-dot" style={{ background: cat.color }} />
-                  </div>
-                  <div className="tip-cat">{cat.name}</div>
-                  {m.note && <div className="tip-note">{m.note.slice(0, 80)}{m.note.length > 80 ? '...' : ''}</div>}
-                  <div className="tip-coords">{m.xPct.toFixed(1)}% · {m.yPct.toFixed(1)}%</div>
-                </div>
-              </>
-            )}
-          </div>
-        );
-      })}
+        '--inv': 1 / view.scale,
+      } as React.CSSProperties}>
+        <MarkersLayer markers={visibleMarkers} catIdx={catIdx} />
       </div>
 
       {/* Measure path — multi-point polyline */}
@@ -1257,6 +1296,7 @@ function HeaderBar() {
         <MobileSearchBar />
       </div>
       <ZoomRail />
+      <MiniMap />
       <SiteFooter />
     </div>
   );

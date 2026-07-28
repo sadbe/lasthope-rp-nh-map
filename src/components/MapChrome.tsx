@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useZoneMapStore, STAGE_SIZE } from "@/lib/zone-map-store";
 
 // Зум относительно ЦЕНТРА экрана — та же формула, что в колесе и пинче,
@@ -47,6 +47,91 @@ export function ZoomRail() {
       />
       <button onClick={() => zoomTo(Math.max(view.scale / 1.4, min))} title="Отдалить">−</button>
       <div className="zoom-val">×{view.scale >= 1 ? view.scale.toFixed(1) : view.scale.toFixed(2)}</div>
+    </div>
+  );
+}
+
+// ===== МИНИКАРТА =====
+// Вся карта целиком в углу плюс рамка текущего вида. Клик или перетаскивание
+// внутри — камера прыгает в эту точку. Масштаб не трогаем, только положение.
+const MINI = 150;
+
+export function MiniMap() {
+  const view = useZoneMapStore(s => s.view);
+  const setView = useZoneMapStore(s => s.setView);
+  const mapImageUrl = useZoneMapStore(s => s.mapImageUrl);
+  const mapImageWidth = useZoneMapStore(s => s.mapImageWidth);
+  const mapImageHeight = useZoneMapStore(s => s.mapImageHeight);
+  const [vp, setVp] = useState({ w: 0, h: 0 });
+  const [open, setOpen] = useState(true);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef(false);
+
+  useEffect(() => {
+    const upd = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    upd();
+    window.addEventListener("resize", upd);
+    return () => window.removeEventListener("resize", upd);
+  }, []);
+
+  const jumpTo = useCallback((clientX: number, clientY: number) => {
+    const box = boxRef.current;
+    if (!box) return;
+    const r = box.getBoundingClientRect();
+    const stageX = ((clientX - r.left) / MINI) * STAGE_SIZE;
+    const stageY = ((clientY - r.top) / MINI) * STAGE_SIZE;
+    const v = useZoneMapStore.getState().view;
+    setView({
+      tx: window.innerWidth / 2 - stageX * v.scale,
+      ty: window.innerHeight / 2 - stageY * v.scale,
+      scale: v.scale,
+    });
+  }, [setView]);
+
+  if (!mapImageUrl || vp.w === 0) return null;
+
+  const k = MINI / STAGE_SIZE; // сцена -> миникарта
+  // Картинка растянута по ширине сцены; высота — по её пропорциям.
+  const natW = mapImageWidth || 8000;
+  const natH = mapImageHeight || 8000;
+  const imgH = MINI * (natH / natW);
+
+  // Прямоугольник текущего вида в координатах сцены, переведённый в миникарту.
+  const rx = (-view.tx / view.scale) * k;
+  const ry = (-view.ty / view.scale) * k;
+  const rw = (vp.w / view.scale) * k;
+  const rh = (vp.h / view.scale) * k;
+
+  return (
+    <div className={`mini-map ${open ? "" : "mini-collapsed"}`}>
+      <button className="mini-toggle" onClick={() => setOpen(o => !o)}
+        title={open ? "Свернуть миникарту" : "Развернуть миникарту"}>
+        {open ? "–" : "▣"}
+      </button>
+      {open && (
+        <div
+          ref={boxRef}
+          className="mini-box"
+          style={{ width: MINI, height: MINI }}
+          onPointerDown={e => {
+            dragRef.current = true;
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            jumpTo(e.clientX, e.clientY);
+          }}
+          onPointerMove={e => { if (dragRef.current) jumpTo(e.clientX, e.clientY); }}
+          onPointerUp={e => {
+            dragRef.current = false;
+            (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+          }}
+        >
+          <img src={mapImageUrl} alt="" draggable={false}
+            style={{ position: "absolute", left: 0, top: 0, width: MINI, height: imgH, maxWidth: "none", maxHeight: "none", pointerEvents: "none" }} />
+          <div className="mini-view" style={{
+            left: Math.max(0, rx), top: Math.max(0, ry),
+            width: Math.min(rw, MINI), height: Math.min(rh, MINI),
+          }} />
+        </div>
+      )}
     </div>
   );
 }
