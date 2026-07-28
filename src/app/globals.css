@@ -1416,3 +1416,13 @@ html { touch-action: none; overscroll-behavior: none; }
 .mini-toggle:hover { color: var(--text-bright); border-color: var(--pale-dim); }
 .mini-collapsed { padding: 0; }
 @media (max-width: 640px) { .mini-map { display: none; } }
+
+/* ===== ПАНЕЛЬ СЛОЁВ: ТУМБЛЕР И РАЗМЕР ===== */
+.layer-tools { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; }
+.layer-tool-row {
+  display: flex; align-items: center; gap: 6px; padding: 4px 0; cursor: pointer;
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-pale);
+  letter-spacing: 0.05em;
+}
+.layer-size-range { width: 100%; accent-color: var(--pale); cursor: pointer; }
+.zone-ring { z-index: 1; }

@@ -18,6 +18,13 @@ export interface Marker {
   note?: string;
   imageUrl?: string;
   preset?: boolean;
+  // Радиус зоны в метрах (территории зверей, зомби, заражёнка). Если задан,
+  // метка рисуется ещё и кругом, который масштабируется вместе с картой.
+  radiusM?: number;
+  // Игровые координаты DayZ как есть, чтобы называть позицию так же, как её
+  // видно в игре, без обратного пересчёта процентов.
+  x?: number;
+  z?: number;
 }
 
 export interface Category {
@@ -84,6 +91,12 @@ export interface ZoneMapState {
   // Layers
   activeLayers: Record<string, boolean>;
 
+  // Показывать ли метки, вытащенные из файлов миссии. Выключенный тумблер
+  // оставляет на карте только то, что поставлено руками.
+  presetVisible: boolean;
+  // Множитель размера иконок меток, 0.5..3.
+  markerScale: number;
+
   // Effects
   geigerValue: number;
   anomalyWarning: string | null;
@@ -128,6 +141,9 @@ export interface ZoneMapState {
   setMapImageSize: (w: number, h: number) => void;
   setShowingTopo: (showing: boolean) => void;
   setMapWorldSizeM: (m: number) => void;
+  setPresetVisible: (v: boolean) => void;
+  restoreUiPrefs: () => void;
+  setMarkerScale: (v: number) => void;
   loadMapAssets: () => Promise<void>;
   toggleLayer: (catId: string) => void;
   setGeigerValue: (value: number) => void;
@@ -289,6 +305,8 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   showingTopo: false,
   mapWorldSizeM: MAP_SIZE_M,
   activeLayers: {},
+  presetVisible: true,
+  markerScale: 1,
   geigerValue: 0,
   anomalyWarning: null,
   showSaveIndicator: false,
@@ -526,6 +544,27 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   setMapImageSize: (w, h) => set({ mapImageWidth: w, mapImageHeight: h }),
   setShowingTopo: (showing) => set({ showingTopo: showing }),
   setMapWorldSizeM: (m) => set({ mapWorldSizeM: m }),
+  // Обе настройки переживают перезагрузку: это вкус пользователя, а не
+  // состояние карты. localStorage в try — на сервере его нет.
+  setPresetVisible: (v) => {
+    try { localStorage.setItem('zm_presetVisible', v ? '1' : '0'); } catch {}
+    set({ presetVisible: v });
+  },
+  setMarkerScale: (v) => {
+    const c = Math.max(0.5, Math.min(3, v));
+    try { localStorage.setItem('zm_markerScale', String(c)); } catch {}
+    set({ markerScale: c });
+  },
+  restoreUiPrefs: () => {
+    try {
+      const pv = localStorage.getItem('zm_presetVisible');
+      const ms = localStorage.getItem('zm_markerScale');
+      set({
+        presetVisible: pv === null ? true : pv === '1',
+        markerScale: ms === null ? 1 : Math.max(0.5, Math.min(3, Number(ms) || 1)),
+      });
+    } catch {}
+  },
 
   // Looks for map images sitting in /public/assets/ on whatever server this
   // is hosted on — static files that ship with the deploy, not something

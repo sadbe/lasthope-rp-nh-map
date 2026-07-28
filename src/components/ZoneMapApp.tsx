@@ -166,6 +166,10 @@ function LayersPanel() {
   const customCategories = useZoneMapStore(s => s.customCategories);
   const removeCustomCategory = useZoneMapStore(s => s.removeCustomCategory);
   const markers = useZoneMapStore(s => s.markers);
+  const presetVisible = useZoneMapStore(s => s.presetVisible);
+  const setPresetVisible = useZoneMapStore(s => s.setPresetVisible);
+  const markerScale = useZoneMapStore(s => s.markerScale);
+  const setMarkerScale = useZoneMapStore(s => s.setMarkerScale);
   const allCats = useMemo(() => [...BUILTIN_CATEGORIES, ...customCategories], [customCategories]);
 
   const handleDeleteLayer = useCallback((e: React.MouseEvent, id: string, name: string) => {
@@ -185,6 +189,23 @@ function LayersPanel() {
         </div>
       </div>
       <div className="stalker-scroll map-panel-body">
+        <div className="layer-tools">
+          <div className="layer-tool-row" onClick={() => setPresetVisible(!presetVisible)}>
+            <div style={{
+              width: 10, height: 10, borderRadius: 2,
+              border: `1px solid ${presetVisible ? 'var(--pale)' : '#333'}`,
+              background: presetVisible ? 'var(--pale)' : '#181818',
+              opacity: presetVisible ? 0.7 : 0.3,
+            }} />
+            <span>НАЙДЕННЫЕ МЕТКИ</span>
+          </div>
+          <div className="layer-tool-row" style={{ cursor: 'default' }}>
+            <span style={{ flex: 1 }}>РАЗМЕР ×{markerScale.toFixed(1)}</span>
+          </div>
+          <input type="range" min={0.5} max={3} step={0.1} value={markerScale}
+            onChange={e => setMarkerScale(Number(e.target.value))}
+            className="layer-size-range" />
+        </div>
         {allCats.map(cat => {
           const active = activeLayers[cat.id] ?? true;
           const iconColor = active ? cat.color : INACTIVE_ICON_COLOR;
@@ -508,7 +529,7 @@ function MarkerSheet() {
 // кадр панорамы или щипка. Иконки не должны расти вместе с картой, поэтому
 // каждая метка гасит масштаб родителя через переменную --inv.
 const MarkersLayer = React.memo(function MarkersLayer(
-  { markers, catIdx }: { markers: Marker[]; catIdx: Record<string, Category> }
+  { markers, catIdx, worldM }: { markers: Marker[]; catIdx: Record<string, Category>; worldM: number }
 ) {
   return (
     <>
@@ -517,8 +538,21 @@ const MarkersLayer = React.memo(function MarkersLayer(
         const mx = (m.xPct / 100) * STAGE_SIZE;
         const my = (m.yPct / 100) * STAGE_SIZE;
         const isCluster = m.id.startsWith('cluster_');
+        // Радиус задан в метрах мира, а рисуем в координатах сцены — круг
+        // обязан жить в масштабе карты, иначе зона в 300 м на разных зумах
+        // накрывала бы разные куски местности.
+        const rStage = m.radiusM ? (m.radiusM / worldM) * STAGE_SIZE : 0;
         return (
-          <div key={m.id} className="marker-glow marker-hover-wrap" style={{
+          <React.Fragment key={m.id}>
+          {rStage > 0 && (
+            <div className="zone-ring" style={{
+              position: 'absolute', left: mx - rStage, top: my - rStage,
+              width: rStage * 2, height: rStage * 2, borderRadius: '50%',
+              border: `calc(1px * var(--hair, 1)) solid ${cat.color}`,
+              background: `${cat.color}14`, pointerEvents: 'none',
+            }} />
+          )}
+          <div className="marker-glow marker-hover-wrap" style={{
             position: 'absolute', left: mx, top: my,
             transform: 'translate(-50%, -50%) scale(var(--inv, 1))',
             '--glow-color': cat.color,
@@ -546,11 +580,17 @@ const MarkersLayer = React.memo(function MarkersLayer(
                   </div>
                   <div className="tip-cat">{cat.name}</div>
                   {m.note && <div className="tip-note">{m.note.slice(0, 80)}{m.note.length > 80 ? '...' : ''}</div>}
-                  <div className="tip-coords">{m.xPct.toFixed(1)}% · {m.yPct.toFixed(1)}%</div>
+                  <div className="tip-coords">
+                    {m.x !== undefined && m.z !== undefined
+                      ? `X ${m.x} · Z ${m.z}`
+                      : `${m.xPct.toFixed(1)}% · ${m.yPct.toFixed(1)}%`}
+                    {m.radiusM ? ` · r ${m.radiusM} м` : ''}
+                  </div>
                 </div>
               </>
             )}
           </div>
+          </React.Fragment>
         );
       })}
     </>
@@ -579,6 +619,8 @@ function MapEngine() {
   const setMapImageSize = useZoneMapStore(s => s.setMapImageSize);
   const markers = useZoneMapStore(s => s.markers);
   const presetMarkers = useZoneMapStore(s => s.presetMarkers);
+  const presetVisible = useZoneMapStore(s => s.presetVisible);
+  const markerScale = useZoneMapStore(s => s.markerScale);
   const customCategories = useZoneMapStore(s => s.customCategories);
   const searchQuery = useZoneMapStore(s => s.searchQuery);
   const setShowSaveIndicator = useZoneMapStore(s => s.setShowSaveIndicator);
@@ -850,7 +892,12 @@ function MapEngine() {
 
   // Render markers
   const catIdx = useMemo(() => buildCatIndex(customCategories), [customCategories]);
-  const all = useMemo(() => allMarkers(presetMarkers, markers), [presetMarkers, markers]);
+  // Найденное в файлах миссии и поставленное руками — два независимых
+  // набора. Тумблер гасит первый, второй виден всегда.
+  const all = useMemo(
+    () => (presetVisible ? allMarkers(presetMarkers, markers) : markers),
+    [presetMarkers, markers, presetVisible]
+  );
 
   const filteredMarkers = useMemo(() => {
     let result = all.filter(m => activeLayers[m.cat] ?? true);
@@ -881,6 +928,9 @@ function MapEngine() {
     // стояли, и при панораме группировка «залипала» в старом положении.
     const cell = CLUSTER_THRESHOLD / scaleStep;
     for (const m of filteredMarkers) {
+      // Зоны с радиусом не схлопываем: пузырёк «12» вместо круга в 300 м —
+      // это потеря смысла, а не экономия.
+      if (m.radiusM) { singles.push(m); continue; }
       const sx = (m.xPct / 100) * STAGE_SIZE;
       const sy = (m.yPct / 100) * STAGE_SIZE;
       const cx = Math.round(sx / cell);
@@ -1034,9 +1084,13 @@ function MapEngine() {
         transformOrigin: '0 0',
         willChange: 'transform',
         zIndex: 10,
-        '--inv': 1 / view.scale,
+        // --inv гасит масштаб карты внутри меток и заодно множит на
+        // выбранный пользователем размер; --hair держит рамки зон толщиной
+        // ровно в один экранный пиксель на любом зуме.
+        '--inv': markerScale / view.scale,
+        '--hair': 1 / view.scale,
       } as React.CSSProperties}>
-        <MarkersLayer markers={visibleMarkers} catIdx={catIdx} />
+        <MarkersLayer markers={visibleMarkers} catIdx={catIdx} worldM={mapWorldSizeM} />
       </div>
 
       {/* Measure path — multi-point polyline */}
@@ -1302,6 +1356,15 @@ function HeaderBar() {
   );
 }
 
+// ===== ВОССТАНОВЛЕНИЕ НАСТРОЕК UI =====
+// Читаем localStorage только после монтирования: на сервере его нет, а
+// чтение прямо в сторе ломало бы гидрацию несовпадением разметки.
+function UiPrefsLoader() {
+  const restoreUiPrefs = useZoneMapStore(s => s.restoreUiPrefs);
+  useEffect(() => { restoreUiPrefs(); }, [restoreUiPrefs]);
+  return null;
+}
+
 // ===== SAVE INDICATOR (fix: clean up timeout) =====
 function SaveIndicator() {
   const show = useZoneMapStore(s => s.showSaveIndicator);
@@ -1488,6 +1551,7 @@ export default function ZoneMapApp() {
     <div className="zone-app">
       <ToolbarCompact />
       <MapEngine />
+      <UiPrefsLoader />
       <HeaderBar />
       {activePanel === 'layers' && <LayersPanel />}
       {appMode === 'admin' && activePanel === 'menu' && <MenuPanel />}
