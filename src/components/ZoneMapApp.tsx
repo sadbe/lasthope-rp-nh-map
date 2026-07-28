@@ -170,7 +170,18 @@ function LayersPanel() {
   const setPresetVisible = useZoneMapStore(s => s.setPresetVisible);
   const markerScale = useZoneMapStore(s => s.markerScale);
   const setMarkerScale = useZoneMapStore(s => s.setMarkerScale);
-  const allCats = useMemo(() => [...BUILTIN_CATEGORIES, ...customCategories], [customCategories]);
+  const presetCategories = useZoneMapStore(s => s.presetCategories);
+  const allCats = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Category[] = [];
+    for (const c of [...BUILTIN_CATEGORIES, ...presetCategories, ...customCategories]) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      out.push(c);
+    }
+    return out;
+  }, [presetCategories, customCategories]);
+  const presetIds = useMemo(() => new Set(presetCategories.map(c => c.id)), [presetCategories]);
   const presetMarkers = useZoneMapStore(s => s.presetMarkers);
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -197,15 +208,14 @@ function LayersPanel() {
       </div>
       <div className="stalker-scroll map-panel-body">
         <div className="layer-tools">
-          <div className="layer-tool-row" onClick={() => setPresetVisible(!presetVisible)}>
-            <div style={{
-              width: 10, height: 10, borderRadius: 2,
-              border: `1px solid ${presetVisible ? 'var(--pale)' : '#333'}`,
-              background: presetVisible ? 'var(--pale)' : '#181818',
-              opacity: presetVisible ? 0.7 : 0.3,
-            }} />
-            <span>НАЙДЕННЫЕ МЕТКИ</span>
-          </div>
+          {/* Главный тумблер панели: гасит всё, что вытащено из файлов
+              миссии, оставляя только расставленное руками. Оформлен
+              кнопкой, а не строкой списка — иначе его не замечают. */}
+          <button className={`preset-switch ${presetVisible ? 'on' : 'off'}`}
+            onClick={() => setPresetVisible(!presetVisible)}>
+            <span className="preset-switch-label">МЕТКИ ИЗ МИССИИ</span>
+            <span className="preset-switch-state">{presetVisible ? 'ВКЛ' : 'ВЫКЛ'}</span>
+          </button>
           <div className="layer-tool-row" style={{ cursor: 'default' }}>
             <span style={{ flex: 1 }}>РАЗМЕР ×{markerScale.toFixed(1)}</span>
           </div>
@@ -231,7 +241,7 @@ function LayersPanel() {
               {/* Сколько меток в слое: без этого невозможно понять, почему
                   один тумблер меняет всё, а другой ничего. */}
               <span className="layer-count">{counts[cat.id] || 0}</span>
-              {appMode === 'admin' && !isBuiltin && (
+              {appMode === 'admin' && !isBuiltin && !presetIds.has(cat.id) && (
                 <span onClick={(e) => handleDeleteLayer(e, cat.id, cat.name)}
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)', padding: '2px 4px' }}>
                   ✕
@@ -515,7 +525,13 @@ function MarkerSheet() {
   const markers = useZoneMapStore(s => s.markers);
   const presetMarkers = useZoneMapStore(s => s.presetMarkers);
   const customCategories = useZoneMapStore(s => s.customCategories);
-  const catIdx = useMemo(() => buildCatIndex(customCategories), [customCategories]);
+  // Категории из spawns.json живут отдельным полем стора: сервер
+  // перезаписывает customCategories целиком и раньше стирал их.
+  const presetCategories = useZoneMapStore(s => s.presetCategories);
+  const catIdx = useMemo(
+    () => buildCatIndex([...presetCategories, ...customCategories]),
+    [presetCategories, customCategories]
+  );
 
   if (!activeSheet || !sheetMode) return null;
   if (sheetMode === 'newLayer') return <NewLayerSheet />;
@@ -896,7 +912,13 @@ function MapEngine() {
   }, [setMapImageUrl]);
 
   // Render markers
-  const catIdx = useMemo(() => buildCatIndex(customCategories), [customCategories]);
+  // Категории из spawns.json живут отдельным полем стора: сервер
+  // перезаписывает customCategories целиком и раньше стирал их.
+  const presetCategories = useZoneMapStore(s => s.presetCategories);
+  const catIdx = useMemo(
+    () => buildCatIndex([...presetCategories, ...customCategories]),
+    [presetCategories, customCategories]
+  );
   // Найденное в файлах миссии и поставленное руками — два независимых
   // набора. Тумблер гасит первый, второй виден всегда.
   const all = useMemo(
@@ -946,8 +968,21 @@ function MapEngine() {
     }
     for (const key of Object.keys(clusters)) {
       const group = clusters[key];
-      if (group.length <= 5) singles.push(...group);
-      else singles.push({ id: `cluster_${key}`, name: `${group.length}`, cat: group[0].cat, xPct: group.reduce((s, m) => s + m.xPct, 0) / group.length, yPct: group.reduce((s, m) => s + m.yPct, 0) / group.length, preset: false });
+      if (group.length <= 5) { singles.push(...group); continue; }
+      // Цвет пузырька — по САМОЙ ЧАСТОЙ категории в группе. Раньше
+      // брался cat первой попавшейся метки, поэтому кластеры красились
+      // как повезёт и карта выглядела одинаково серой.
+      const freq: Record<string, number> = {};
+      for (const m of group) freq[m.cat] = (freq[m.cat] || 0) + 1;
+      const domCat = Object.keys(freq).reduce((a, b) => (freq[b] > freq[a] ? b : a));
+      singles.push({
+        id: `cluster_${key}`,
+        name: `${group.length}`,
+        cat: domCat,
+        xPct: group.reduce((s, m) => s + m.xPct, 0) / group.length,
+        yPct: group.reduce((s, m) => s + m.yPct, 0) / group.length,
+        preset: false,
+      });
     }
     return singles;
   }, [filteredMarkers, viewportSize, scaleStep]);
@@ -1063,16 +1098,20 @@ function MapEngine() {
       {/* Подписи сетки в километрах, прижаты к краям экрана, чтобы были
           видны при любом положении карты. Шаг сетки — 5% мира. */}
       {gridVisible && Array.from({ length: 21 }, (_, i) => {
-        const km = ((i * 5 / 100) * mapWorldSizeM / 1000).toFixed(1);
+        // Подписываем в игровых координатах, а не в километрах: игроки
+        // называют позиции именно так, как их показывает игра. По
+        // вертикали ось Z растёт снизу вверх — отсюда вычитание.
+        const gridX = Math.round((i * 5 / 100) * mapWorldSizeM);
+        const gridZ = Math.round(mapWorldSizeM - (i * 5 / 100) * mapWorldSizeM);
         const sx = (i * 5 / 100) * STAGE_SIZE * view.scale + view.tx;
         const sy = (i * 5 / 100) * STAGE_SIZE * view.scale + view.ty;
         return (
           <span key={`gl${i}`}>
             {sx > 14 && sx < viewportSize.w && (
-              <span className="grid-label" style={{ left: sx + 3, top: 2 }}>{km}</span>
+              <span className="grid-label" style={{ left: sx + 3, top: 2 }}>{gridX}</span>
             )}
             {sy > 14 && sy < viewportSize.h && (
-              <span className="grid-label" style={{ left: 3, top: sy + 2 }}>{km}</span>
+              <span className="grid-label" style={{ left: 3, top: sy + 2 }}>{gridZ}</span>
             )}
           </span>
         );
@@ -1383,6 +1422,88 @@ function UiPrefsLoader() {
   return null;
 }
 
+// ===== КООРДИНАТЫ ПОД КУРСОРОМ =====
+// Пишем прямо в DOM, минуя состояние React: курсор шлёт до 120 событий в
+// секунду, и перерисовывать на каждое дерево с тысячами меток нельзя.
+function CoordHud() {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+  const lastRef = useRef({ x: 0, z: 0 });
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const st = useZoneMapStore.getState();
+      const { tx, ty, scale } = st.view;
+      const w = st.mapWorldSizeM;
+      const x = Math.round(((e.clientX - tx) / (STAGE_SIZE * scale)) * w);
+      const z = Math.round(w - ((e.clientY - ty) / (STAGE_SIZE * scale)) * w);
+      lastRef.current = { x, z };
+      const el = boxRef.current;
+      if (el) el.textContent = `X ${x}  Z ${z}`;
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
+
+  const copy = useCallback(() => {
+    const { x, z } = lastRef.current;
+    navigator.clipboard?.writeText(`${x} ${z}`).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    }).catch(() => {});
+  }, []);
+
+  return (
+    <div className="coord-hud" onClick={copy} title="Клик — скопировать координаты">
+      <span ref={boxRef}>X —  Z —</span>
+      <span className="coord-hud-hint">{copied ? 'СКОПИРОВАНО' : 'КЛИК = КОПИЯ'}</span>
+    </div>
+  );
+}
+
+// ===== ССЫЛКА НА ТОЧКУ =====
+// Позиция и зум живут в адресе страницы, поэтому карту можно кинуть ссылкой
+// «смотри сюда». Пишем в hash с задержкой, чтобы не дёргать историю на
+// каждом кадре панорамы.
+function ViewPermalink() {
+  useEffect(() => {
+    const m = /x=(-?\d+(?:\.\d+)?)&z=(-?\d+(?:\.\d+)?)&s=(\d+(?:\.\d+)?)/.exec(window.location.hash);
+    // Карта после загрузки картинки сама вписывается в экран (fitToViewport
+    // через 150 мс), поэтому позицию из ссылки ставим ПОСЛЕ этого — иначе её
+    // тут же затрёт вписыванием.
+    const restore = setTimeout(() => {
+      if (!m) return;
+      const st = useZoneMapStore.getState();
+      const w = st.mapWorldSizeM;
+      const scale = Number(m[3]);
+      const stageX = (Number(m[1]) / w) * STAGE_SIZE;
+      const stageY = ((w - Number(m[2])) / w) * STAGE_SIZE;
+      st.setView({
+        tx: window.innerWidth / 2 - stageX * scale,
+        ty: window.innerHeight / 2 - stageY * scale,
+        scale,
+      });
+    }, 600);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useZoneMapStore.subscribe(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const s2 = useZoneMapStore.getState();
+        const { tx, ty, scale } = s2.view;
+        const w = s2.mapWorldSizeM;
+        const cx = Math.round((((window.innerWidth / 2) - tx) / (STAGE_SIZE * scale)) * w);
+        const cz = Math.round(w - (((window.innerHeight / 2) - ty) / (STAGE_SIZE * scale)) * w);
+        const hash = `#x=${cx}&z=${cz}&s=${scale.toFixed(4)}`;
+        if (window.location.hash !== hash) {
+          window.history.replaceState(null, '', hash);
+        }
+      }, 500);
+    });
+    return () => { clearTimeout(restore); if (timer) clearTimeout(timer); unsub(); };
+  }, []);
+  return null;
+}
+
 // ===== SAVE INDICATOR (fix: clean up timeout) =====
 function SaveIndicator() {
   const show = useZoneMapStore(s => s.showSaveIndicator);
@@ -1570,6 +1691,8 @@ export default function ZoneMapApp() {
       <ToolbarCompact />
       <MapEngine />
       <UiPrefsLoader />
+      <CoordHud />
+      <ViewPermalink />
       <HeaderBar />
       {activePanel === 'layers' && <LayersPanel />}
       {appMode === 'admin' && activePanel === 'menu' && <MenuPanel />}

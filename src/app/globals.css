@@ -1413,3 +1413,49 @@ html { touch-action: none; overscroll-behavior: none; }
 .layer-row svg { width: 18px; height: 18px; }
 .layer-tools svg { width: 18px; height: 18px; }
 .layer-count { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+
+/* ===== ЧИТАЕМОСТЬ МЕТОК =====
+   Тонкий цветной контур иконки терялся на пёстрой карте — особенно на
+   светлых крышах и дорогах. Сажаем иконку на тёмный диск с кольцом её же
+   цвета: читается на любом фоне, а цвет категории остаётся виден. */
+.marker-icon-only {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; box-sizing: border-box;
+  background: rgba(10, 12, 10, 0.78);
+  border: 1.5px solid var(--glow-color, #9dbf3f);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+.marker-icon-only svg { width: 13px; height: 13px; display: block; }
+.marker-hover-wrap:hover .marker-icon-only {
+  background: rgba(20, 24, 20, 0.92);
+  border-width: 2px;
+}
+
+/* ===== ТУМБЛЕР МЕТОК ИЗ МИССИИ ===== */
+.preset-switch {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 9px 10px; margin-bottom: 8px; cursor: pointer;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em;
+  background: var(--panel-raised); border: 1px solid var(--border);
+  border-radius: 2px; color: var(--text-pale);
+}
+.preset-switch:hover { border-color: var(--pale-dim); color: var(--text-bright); }
+.preset-switch-state { font-weight: 700; }
+.preset-switch.on { border-color: var(--pale); }
+.preset-switch.on .preset-switch-state { color: var(--pale); }
+.preset-switch.off { opacity: 0.75; }
+.preset-switch.off .preset-switch-state { color: var(--danger, #C1352B); }
+
+/* ===== КООРДИНАТЫ ПОД КУРСОРОМ ===== */
+.coord-hud {
+  position: fixed; left: 12px; bottom: calc(var(--footer-h, 26px) + 8px);
+  z-index: 246; display: flex; align-items: baseline; gap: 10px;
+  padding: 5px 10px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 2px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-pale);
+  letter-spacing: 0.06em; user-select: none;
+}
+.coord-hud:hover { border-color: var(--pale-dim); color: var(--text-bright); }
+.coord-hud-hint { font-size: 9px; color: var(--text-dim); }
+@media (max-width: 640px) { .coord-hud { display: none; } }
