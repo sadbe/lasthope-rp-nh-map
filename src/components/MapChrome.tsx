@@ -156,6 +156,16 @@ export function MiniMap() {
 // Футер: правь тексты и ссылки прямо здесь.
 export function SiteFooter() {
   const footerRef = useRef<HTMLDivElement>(null);
+  const [dsCopied, setDsCopied] = useState(false);
+
+  // На профиль дискорда по нику ссылки нет — нужен либо инвайт-код сервера,
+  // либо числовой id пользователя. Поэтому отдаём ник в буфер обмена.
+  const copyDiscord = useCallback(() => {
+    const done = () => { setDsCopied(true); setTimeout(() => setDsCopied(false), 1500); };
+    const cb = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (cb && typeof cb.writeText === 'function') cb.writeText('corbinuw').then(done).catch(done);
+    else done();
+  }, []);
   // Панели отсчитывают низ от футера — отдаём его высоту в CSS-переменную.
   useEffect(() => {
     const el = footerRef.current;
@@ -171,8 +181,10 @@ export function SiteFooter() {
       <div>LAST HOPE · STALKER RP · DAYZ — интерактивная карта Зоны</div>
       <div className="foot-right">
         <span>Разработка: sadbe</span>
-        <a href="https://discord.gg/ВАШ_ИНВАЙТ" target="_blank" rel="noreferrer">DISCORD</a>
-        <a href="https://t.me/ВАШ_КОНТАКТ" target="_blank" rel="noreferrer">TELEGRAM</a>
+        <button className="foot-link" onClick={copyDiscord} title="Скопировать ник">
+          {dsCopied ? 'СКОПИРОВАНО' : 'DISCORD: corbinuw'}
+        </button>
+        <a href="https://t.me/corbinuwu" target="_blank" rel="noreferrer">TELEGRAM</a>
         <a href="https://github.com/sadbe/lasthope-rp-nh-map" target="_blank" rel="noreferrer">GITHUB</a>
       </div>
     </div>

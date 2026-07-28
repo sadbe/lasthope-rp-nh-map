@@ -534,6 +534,8 @@ function NewLayerSheet() {
 // ===== VIEW MARKER SHEET =====
 function ViewMarkerSheet({ marker, cat }: { marker: Marker; cat: Category }) {
   const appMode = useZoneMapStore(s => s.appMode);
+  const mapWorldSizeM = useZoneMapStore(s => s.mapWorldSizeM);
+  const [coordsCopied, setCoordsCopied] = useState(false);
   const setActiveSheet = useZoneMapStore(s => s.setActiveSheet);
   const setSheetMode = useZoneMapStore(s => s.setSheetMode);
   const removeMarker = useZoneMapStore(s => s.removeMarker);
@@ -548,15 +550,35 @@ function ViewMarkerSheet({ marker, cat }: { marker: Marker; cat: Category }) {
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span dangerouslySetInnerHTML={{ __html: iconSvg(cat.icon, cat.color) }} />
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: 'var(--text-bright)', letterSpacing: '0.08em' }}>{marker.name}</span>
-        <div style={{ width: 6, height: 6, background: cat.color, borderRadius: 3, opacity: 0.6 }} />
+        <span className="sheet-title">{marker.name}</span>
+        <div style={{ width: 7, height: 7, background: cat.color, borderRadius: 4, opacity: 0.6 }} />
       </div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.1em', marginBottom: 6 }}>
-        {cat.name} · {marker.xPct.toFixed(1)}% · {marker.yPct.toFixed(1)}%
+      {/* Проценты по картинке не назовёшь в голосовой и не введёшь в игре.
+          У меток из миссии игровые координаты уже лежат в x/z, у своих —
+          считаем из процентов по размеру мира. */}
+      <div className="sheet-coords">
+        <span>{cat.name}</span>
+        <span className="sheet-coord-val">
+          {(() => {
+            const gx = marker.x !== undefined ? marker.x : Math.round((marker.xPct / 100) * mapWorldSizeM);
+            const gz = marker.z !== undefined ? marker.z : Math.round(mapWorldSizeM - (marker.yPct / 100) * mapWorldSizeM);
+            return `X ${gx} · Z ${gz}`;
+          })()}
+        </span>
+        <button className="sheet-coord-copy" title="Скопировать координаты"
+          onClick={() => {
+            const gx = marker.x !== undefined ? marker.x : Math.round((marker.xPct / 100) * mapWorldSizeM);
+            const gz = marker.z !== undefined ? marker.z : Math.round(mapWorldSizeM - (marker.yPct / 100) * mapWorldSizeM);
+            const text = `${gx} ${gz}`;
+            const done = () => { setCoordsCopied(true); setTimeout(() => setCoordsCopied(false), 1400); };
+            const cb = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+            if (cb && typeof cb.writeText === 'function') cb.writeText(text).then(done).catch(done);
+            else done();
+          }}>
+          {coordsCopied ? '✓' : '⧉'}
+        </button>
       </div>
-      {marker.note && (
-        <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--pale)', marginBottom: 8, lineHeight: 1.4 }}>{marker.note}</div>
-      )}
+      {marker.note && <div className="sheet-note">{marker.note}</div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {appMode === 'admin' && (
           <>
@@ -577,6 +599,7 @@ function EditMarkerSheet({ marker, cat }: { marker: Marker; cat: Category }) {
   const setSheetMode = useZoneMapStore(s => s.setSheetMode);
   const customCategories = useZoneMapStore(s => s.customCategories);
   const setShowSaveIndicator = useZoneMapStore(s => s.setShowSaveIndicator);
+  const pushToast = useZoneMapStore(s => s.pushToast);
   const allCats = useMemo(() => [...BUILTIN_CATEGORIES, ...customCategories], [customCategories]);
   const [name, setName] = useState(marker.name);
   const [note, setNote] = useState(marker.note || '');
@@ -592,13 +615,21 @@ function EditMarkerSheet({ marker, cat }: { marker: Marker; cat: Category }) {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.imageUrl) {
         setImageUrl(data.imageUrl);
+      } else {
+        // Стоял голый `if (res.ok)` без ветки else. Сервер отвечает
+        // осмысленно — «хранилище не настроено: подключите Vercel Blob»,
+        // «максимальный размер 5 МБ», — но интерфейс молчал, и выглядело
+        // это как «загрузил, а картинки нет».
+        pushToast(data.error || `Загрузка не удалась (HTTP ${res.status})`, 'error');
       }
-    } catch { /* offline */ }
+    } catch (err) {
+      pushToast(`Загрузка не удалась: ${(err as Error).message}`, 'error');
+    }
     setUploading(false);
-  }, []);
+  }, [pushToast]);
 
   const handleSave = useCallback(() => {
     updateMarker(marker.id, { name: name.trim(), note: note.trim(), cat: selectedCat, imageUrl: imageUrl.trim() || undefined });
@@ -746,9 +777,8 @@ const MarkersLayer = React.memo(function MarkersLayer(
                   <div className="tip-cat">{cat.name}</div>
                   {m.note && <div className="tip-note">{m.note.slice(0, 80)}{m.note.length > 80 ? '...' : ''}</div>}
                   <div className="tip-coords">
-                    {m.x !== undefined && m.z !== undefined
-                      ? `X ${m.x} · Z ${m.z}`
-                      : `${m.xPct.toFixed(1)}% · ${m.yPct.toFixed(1)}%`}
+                    {`X ${m.x !== undefined ? m.x : Math.round((m.xPct / 100) * worldM)}`
+                      + ` · Z ${m.z !== undefined ? m.z : Math.round(worldM - (m.yPct / 100) * worldM)}`}
                     {m.radiusM ? ` · r ${m.radiusM} м` : ''}
                   </div>
                 </div>

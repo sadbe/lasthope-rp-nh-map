@@ -30,27 +30,14 @@ export default function AdminMapClient() {
 }
 
 function SignOutButton() {
+  // Висела на bottom:12 left:12 с z-index 9999 — то есть ровно на табло
+  // координат и поверх вообще всего, включая открытые панели. Поднимаем над
+  // табло, уводим под панели по z-index и отодвигаем, когда открыты слои.
+  const activePanel = useZoneMapStore((s) => s.activePanel);
   return (
     <button
+      className={`admin-signout${activePanel === 'layers' ? ' admin-signout-shift' : ''}`}
       onClick={() => signOut({ callbackUrl: '/login' })}
-      style={{
-        position: 'fixed',
-        bottom: 12,
-        left: 12,
-        zIndex: 9999,
-        fontFamily: 'var(--font-mono)',
-        fontSize: 9,
-        color: 'var(--text-dim)',
-        letterSpacing: '0.1em',
-        background: 'var(--panel)',
-        border: '1px solid var(--border)',
-        padding: '6px 10px',
-        cursor: 'pointer',
-        opacity: 0.7,
-        transition: 'opacity 0.2s',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7'; }}
     >
       ⏏ ВЫЙТИ
     </button>
