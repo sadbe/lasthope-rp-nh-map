@@ -57,6 +57,11 @@ export interface ZoneMapState {
   // Markers
   markers: Marker[];
   presetMarkers: Marker[];
+  // Категории из spawns.json. ОТДЕЛЬНО от пользовательских: loadFromServer
+  // перезаписывает customCategories ответом API целиком, и если он приходил
+  // после загрузки пресетов — категории миссии молча исчезали вместе с
+  // цветами меток. Гонка на ровном месте, теперь её просто нет.
+  presetCategories: Category[];
   customCategories: Category[];
 
   // View
@@ -287,6 +292,7 @@ export const CLUSTER_THRESHOLD = 120;
 export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   markers: [],
   presetMarkers: [],
+  presetCategories: [],
   customCategories: [],
   view: { tx: 0, ty: 0, scale: 1 },
   addMode: false,
@@ -493,14 +499,7 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
     const payload = data as { markers?: Marker[]; categories?: Category[] };
     const list: Marker[] = Array.isArray(data) ? (data as Marker[]) : (payload.markers || []);
     const cats: Category[] = Array.isArray(data) ? [] : (payload.categories || []);
-    if (cats.length) {
-      set(s => ({
-        customCategories: [
-          ...s.customCategories,
-          ...cats.filter(c => !s.customCategories.some(x => x.id === c.id)),
-        ],
-      }));
-    }
+    if (cats.length) set({ presetCategories: cats });
     set({
       presetMarkers: list.map((m, i) => ({
         ...m,
