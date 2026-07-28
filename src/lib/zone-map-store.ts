@@ -580,7 +580,10 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
       });
 
     const [sat, topo, meta] = await Promise.all([
-      tryLoadImage(['/assets/map-satellite.jpg', '/assets/map-satellite.png']),
+      // WebP первым: он втрое легче того же JPEG. Старые браузеры его
+      // не загрузят, onerror уронит проверку на следующий путь — тогда
+      // подхватится jpg, который остаётся в репозитории как запасной.
+      tryLoadImage(['/assets/map-satellite.webp', '/assets/map-satellite.jpg', '/assets/map-satellite.png']),
       tryLoadImage(['/assets/map-topo.jpg', '/assets/map-topo.png']),
       fetch('/assets/map-meta.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ]);
