@@ -133,13 +133,73 @@ function CrtNoise() {
 function SearchBar() {
   const searchQuery = useZoneMapStore(s => s.searchQuery);
   const setSearchQuery = useZoneMapStore(s => s.setSearchQuery);
+  const markers = useZoneMapStore(s => s.markers);
+  const presetMarkers = useZoneMapStore(s => s.presetMarkers);
+  const setActiveSheet = useZoneMapStore(s => s.setActiveSheet);
+  const setSheetMode = useZoneMapStore(s => s.setSheetMode);
+  const [open, setOpen] = useState(false);
+
+  // Раньше поиск только гасил лишние метки на карте — то есть работал, если
+  // ты уже смотришь в нужное место. Список результатов превращает его в
+  // навигацию: видно, что нашлось, и можно прыгнуть на точку.
+  const hits = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const out: Marker[] = [];
+    for (const m of [...markers, ...presetMarkers]) {
+      if (m.name.toLowerCase().includes(q)) out.push(m);
+      if (out.length >= 10) break;
+    }
+    return out;
+  }, [searchQuery, markers, presetMarkers]);
+
+  const flyTo = useCallback((m: Marker) => {
+    const st = useZoneMapStore.getState();
+    const scale = Math.max(st.view.scale, 2.5);
+    st.setView({
+      tx: window.innerWidth / 2 - (m.xPct / 100) * STAGE_SIZE * scale,
+      ty: window.innerHeight / 2 - (m.yPct / 100) * STAGE_SIZE * scale,
+      scale,
+    });
+    setActiveSheet(m.id);
+    setSheetMode('view');
+    setOpen(false);
+  }, [setActiveSheet, setSheetMode]);
+
   return (
-    <input
-      className="s-input search-wide"
-      placeholder="ПОИСК ЛОКАЦИИ..."
-      value={searchQuery}
-      onChange={e => setSearchQuery(e.target.value)}
-    />
+    <div className="search-box">
+      <input
+        className="s-input search-wide"
+        placeholder="ПОИСК ЛОКАЦИИ..."
+        value={searchQuery}
+        onChange={e => { setSearchQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        // Закрываем не сразу: иначе blur успевает снять список раньше, чем
+        // по нему проходит клик.
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && hits[0]) flyTo(hits[0]);
+          if (e.key === 'Escape') { setSearchQuery(''); setOpen(false); }
+        }}
+      />
+      {searchQuery && (
+        <button className="search-clear" onMouseDown={e => e.preventDefault()}
+          onClick={() => setSearchQuery('')} title="Очистить">✕</button>
+      )}
+      {open && hits.length > 0 && (
+        <div className="search-drop stalker-scroll">
+          {hits.map(m => (
+            <div key={m.id} className="search-hit" onMouseDown={e => e.preventDefault()}
+              onClick={() => flyTo(m)}>
+              <span className="search-hit-name">{m.name}</span>
+              <span className="search-hit-coords">
+                {m.x !== undefined && m.z !== undefined ? `X ${m.x} Z ${m.z}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -155,6 +215,29 @@ function MobileSearchBar() {
       onChange={e => setSearchQuery(e.target.value)}
     />
   );
+}
+
+// ===== ГРУППЫ СЛОЁВ =====
+// 42 тумблера подряд не читаются: чтобы выключить всех зомби, приходилось
+// щёлкать девять раз, разыскивая их взглядом среди животных и лута.
+// Раскладываем по смыслу. Порядок важен: «ЗОМБИ: ПОЛИЦИЯ» должно попасть в
+// зомби, а не в транспорт, поэтому зомби проверяются первыми.
+type LayerGroup = { id: string; name: string; cats: Category[] };
+
+const LAYER_GROUP_DEFS: { id: string; name: string; re: RegExp }[] = [
+  { id: 'zombie',  name: 'ЗОМБИ',          re: /зомби|мутант/i },
+  { id: 'animals', name: 'ЖИВОТНЫЕ',       re: /медвед|волк|кабан|олен|косул|коров|овц|коз|свинь|кур|зай|живот|рыб/i },
+  { id: 'vehicle', name: 'ТРАНСПОРТ',      re: /легков|грузов|машин|транспорт|вертол|авто|техник/i },
+  { id: 'loot',    name: 'ВАНИЛЬНЫЙ ЛУТ',  re: /офис|промзон|охот|ферм|побереж|город|деревн|лут|медиц|воен|полиц|склад|школ|больниц|заправ|дом/i },
+  { id: 'zones',   name: 'ЗОНЫ И ТОЧКИ',   re: /зон|спавн|подземель|костр|доск|ёлк|елк|аномал|базa|база|лагер/i },
+];
+
+function layerGroupOf(cat: Category, isPreset: boolean): string {
+  // Всё, что не пришло из файлов миссии, — свои слои: их ставили руками и
+  // ищут отдельно от вываленных из mapgroupproto тысяч точек.
+  if (!isPreset) return 'mine';
+  for (const g of LAYER_GROUP_DEFS) if (g.re.test(cat.name)) return g.id;
+  return 'other';
 }
 
 // ===== LAYERS PANEL =====
@@ -182,6 +265,14 @@ function LayersPanel() {
     return out;
   }, [presetCategories, customCategories]);
   const presetIds = useMemo(() => new Set(presetCategories.map(c => c.id)), [presetCategories]);
+  const setActiveLayersDirect = useZoneMapStore(s => s.setActiveLayersDirect);
+  // Свои слои открыты, остальные свёрнуты: панель должна помещаться на
+  // экран целиком, иначе группировка ничего не даёт.
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(
+    () => ({ zombie: true, animals: true, vehicle: true, loot: true, zones: true, other: true })
+  );
+  const toggleGroup = useCallback(
+    (id: string) => setCollapsedGroups(prev => ({ ...prev, [id]: !prev[id] })), []);
   const presetMarkers = useZoneMapStore(s => s.presetMarkers);
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -189,6 +280,27 @@ function LayersPanel() {
     for (const m of markers) c[m.cat] = (c[m.cat] || 0) + 1;
     return c;
   }, [presetMarkers, markers]);
+
+  const layerGroups = useMemo(() => {
+    const order = ['mine', ...LAYER_GROUP_DEFS.map(g => g.id), 'other'];
+    const names: Record<string, string> = { mine: 'СВОИ СЛОИ', other: 'ПРОЧЕЕ' };
+    for (const g of LAYER_GROUP_DEFS) names[g.id] = g.name;
+    const bucket: Record<string, Category[]> = {};
+    for (const c of allCats) {
+      const gid = layerGroupOf(c, presetIds.has(c.id));
+      (bucket[gid] = bucket[gid] || []).push(c);
+    }
+    return order
+      .filter(id => bucket[id] && bucket[id].length > 0)
+      .map(id => ({ id, name: names[id], cats: bucket[id] } as LayerGroup));
+  }, [allCats, presetIds]);
+
+  // Один клик вместо девяти: гасим или зажигаем всю группу разом.
+  const setGroupActive = useCallback((g: LayerGroup, next: boolean) => {
+    const patch: Record<string, boolean> = { ...activeLayers };
+    for (const c of g.cats) patch[c.id] = next;
+    setActiveLayersDirect(patch);
+  }, [activeLayers, setActiveLayersDirect]);
 
   const handleDeleteLayer = useCallback((e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
@@ -223,7 +335,22 @@ function LayersPanel() {
             onChange={e => setMarkerScale(Number(e.target.value))}
             className="layer-size-range" />
         </div>
-        {allCats.map(cat => {
+        {layerGroups.map(g => {
+          const open = !collapsedGroups[g.id];
+          const on = g.cats.filter(c => activeLayers[c.id] ?? true).length;
+          return (
+          <div key={g.id} className="layer-group">
+            <div className="layer-group-head" onClick={() => toggleGroup(g.id)}>
+              <span className="layer-group-caret">{open ? '▾' : '▸'}</span>
+              <span className="layer-group-name">{g.name}</span>
+              <span className="layer-group-count">{on}/{g.cats.length}</span>
+              <span className="layer-group-all"
+                onClick={e => { e.stopPropagation(); setGroupActive(g, on < g.cats.length); }}
+                title="Включить или выключить всю группу">
+                {on === 0 ? '○' : on === g.cats.length ? '●' : '◐'}
+              </span>
+            </div>
+            {open && g.cats.map(cat => {
           const active = activeLayers[cat.id] ?? true;
           const iconColor = active ? cat.color : INACTIVE_ICON_COLOR;
           const isBuiltin = BUILTIN_CATEGORIES.some(b => b.id === cat.id);
@@ -248,6 +375,9 @@ function LayersPanel() {
                 </span>
               )}
             </div>
+          );
+            })}
+          </div>
           );
         })}
       </div>
@@ -559,6 +689,10 @@ const MarkersLayer = React.memo(function MarkersLayer(
         const mx = (m.xPct / 100) * STAGE_SIZE;
         const my = (m.yPct / 100) * STAGE_SIZE;
         const isCluster = m.id.startsWith('cluster_');
+        // 24 px за десяток меток, потолок 44 — иначе пузырь на пол-экрана.
+        const clusterSize = isCluster
+          ? Math.min(44, 22 + Math.round(Math.log10(Math.max(10, Number(m.name) || 10)) * 9))
+          : 0;
         // Радиус задан в метрах мира, а рисуем в координатах сцены — круг
         // обязан жить в масштабе карты, иначе зона в 300 м на разных зумах
         // накрывала бы разные куски местности.
@@ -579,7 +713,17 @@ const MarkersLayer = React.memo(function MarkersLayer(
             '--glow-color': cat.color,
           } as React.CSSProperties}>
             {isCluster ? (
-              <div style={{ width: 28, height: 28, background: `${cat.color}33`, border: `1px solid ${cat.color}`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 9, color: cat.color }}>
+              // Размер по количеству, заливка плотная, цифра тёмная:
+              // прозрачный кружок с тонкой рамкой на пёстрой карте
+              // не читался вообще.
+              <div style={{
+                width: clusterSize, height: clusterSize, borderRadius: clusterSize,
+                background: cat.color, border: '1px solid rgba(0,0,0,0.65)',
+                boxShadow: '0 0 0 1px rgba(255,255,255,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: 'var(--font-mono)', fontWeight: 700,
+                fontSize: clusterSize <= 26 ? 10 : 11, color: '#0d0f0d',
+              }}>
                 {m.name}
               </div>
             ) : (
@@ -662,6 +806,9 @@ function MapEngine() {
   // Актуальные кластеры для хит-теста в handlePointerUp (см. комментарий
   // у присваивания ниже).
   const clusteredRef = useRef<Marker[]>([]);
+  // То же самое для одиночных меток: хит-тест обязан видеть ровно то, что
+  // нарисовано, а список считается ниже по файлу.
+  const hitRef = useRef<Marker[]>([]);
 
   // ResizeObserver
   useEffect(() => {
@@ -889,13 +1036,19 @@ function MapEngine() {
           });
           return;
         }
-        const all = allMarkers(presetMarkers, markers);
-        const clicked = all.find(m => {
+        // Проверяли по ПОЛНОМУ набору точек, не глядя на тумблер миссии,
+        // выключенные слои и поиск. Поэтому клик по пустой карте открывал
+        // карточку метки, которой на экране нет. Плюс find брал первую
+        // попавшуюся в квадрате — теперь берём ближайшую.
+        let best: Marker | null = null;
+        let bestD = 14 * 14;
+        for (const m of hitRef.current) {
           const mx = (m.xPct / 100) * STAGE_SIZE * view.scale + view.tx;
           const my = (m.yPct / 100) * STAGE_SIZE * view.scale + view.ty;
-          return Math.abs(clickX - mx) < 14 && Math.abs(clickY - my) < 14;
-        });
-        if (clicked) { setActiveSheet(clicked.id); setSheetMode('view'); }
+          const d = (clickX - mx) * (clickX - mx) + (clickY - my) * (clickY - my);
+          if (d < bestD) { bestD = d; best = m; }
+        }
+        if (best) { setActiveSheet(best.id); setSheetMode('view'); }
       }
     }
   }, [addMode, measureModeOn, view, markers, presetMarkers, addMarker, addMeasurePoint, setActiveSheet, setSheetMode, setAddMode, setShowSaveIndicator, setView]);
@@ -991,6 +1144,7 @@ function MapEngine() {
   // напрямую в замыкание его не взять (TDZ в массиве зависимостей). Ref
   // обновляется каждый рендер и читается только в момент клика.
   clusteredRef.current = clustered;
+  hitRef.current = filteredMarkers;
 
   // Отсекаем всё, что за пределами экрана. В spawns.json почти 8000 точек,
   // и держать их все в DOM (каждая — div со свечением и карточкой) телефон
@@ -1386,6 +1540,10 @@ function HeaderBar() {
             <DeadSubtitle text="STALKER RP · DAYZ" />
           </div>
         </div>
+        <div className="header-center header-center-inline">
+          <SearchBar />
+          <MobileSearchBar />
+        </div>
         <div className="header-right">
           <ToolbarWide />
           {appMode === 'viewer' && (
@@ -1401,10 +1559,6 @@ function HeaderBar() {
             </a>
           )}
         </div>
-      </div>
-      <div className="header-center">
-        <SearchBar />
-        <MobileSearchBar />
       </div>
       <ZoomRail />
       <MiniMap />
@@ -1428,10 +1582,18 @@ function UiPrefsLoader() {
 function CoordHud() {
   const boxRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+  const frozenRef = useRef(false);
   const lastRef = useRef({ x: 0, z: 0 });
+  const activePanel = useZoneMapStore(s => s.activePanel);
+
+  useEffect(() => { frozenRef.current = frozen; }, [frozen]);
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      // Зафиксированные координаты не перетираем: смысл фиксации в том,
+      // чтобы увести курсор и всё равно видеть точку.
+      if (frozenRef.current) return;
       const st = useZoneMapStore.getState();
       const { tx, ty, scale } = st.view;
       const w = st.mapWorldSizeM;
@@ -1447,16 +1609,42 @@ function CoordHud() {
 
   const copy = useCallback(() => {
     const { x, z } = lastRef.current;
-    navigator.clipboard?.writeText(`${x} ${z}`).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    }).catch(() => {});
+    const text = `${x} ${z}`;
+    setFrozen(f => !f);
+    // Было `navigator.clipboard?.writeText(...).then(...)`: если буфера в
+    // браузере нет, выражение возвращает undefined, .then падает — и клик
+    // не делал вообще ничего. Отсюда «фиксация по клику не работает».
+    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1200); };
+    const fallback = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch { /* буфер недоступен — фиксация всё равно сработала */ }
+      done();
+    };
+    const cb = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (cb && typeof cb.writeText === 'function') {
+      cb.writeText(text).then(done).catch(fallback);
+    } else {
+      fallback();
+    }
   }, []);
 
   return (
-    <div className="coord-hud" onClick={copy} title="Клик — скопировать координаты">
+    // Табло висело поверх открытой панели слоёв (z-index 246 против 100) и
+    // накрывало её нижние строки — отодвигаем на ширину панели.
+    <div className={`coord-hud${activePanel === 'layers' ? ' coord-hud-shift' : ''}${frozen ? ' frozen' : ''}`}
+      onClick={copy} title="Клик — зафиксировать и скопировать координаты">
       <span ref={boxRef}>X —  Z —</span>
-      <span className="coord-hud-hint">{copied ? 'СКОПИРОВАНО' : 'КЛИК = КОПИЯ'}</span>
+      <span className="coord-hud-hint">
+        {copied ? 'СКОПИРОВАНО' : frozen ? 'ЗАФИКСИРОВАНО · КЛИК = СНЯТЬ' : 'КЛИК = ФИКС + КОПИЯ'}
+      </span>
     </div>
   );
 }

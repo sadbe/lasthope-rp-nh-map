@@ -66,6 +66,23 @@ export function MiniMap() {
   const [open, setOpen] = useState(true);
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Карточка метки и миникарта обе жили в правом нижнем углу и налезали
+  // друг на друга. Отдаём реальную высоту миникарты в переменную, чтобы
+  // карточка вставала над ней — и не оставляла дыру, когда её свернули.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const apply = () => document.documentElement.style.setProperty('--mini-h', `${el.offsetHeight}px`);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.setProperty('--mini-h', '0px');
+    };
+  }, []);
 
   useEffect(() => {
     const upd = () => setVp({ w: window.innerWidth, h: window.innerHeight });
@@ -103,7 +120,7 @@ export function MiniMap() {
   const rh = (vp.h / view.scale) * k;
 
   return (
-    <div className={`mini-map ${open ? "" : "mini-collapsed"}`}>
+    <div className={`mini-map ${open ? "" : "mini-collapsed"}`} ref={rootRef}>
       <button className="mini-toggle" onClick={() => setOpen(o => !o)}
         title={open ? "Свернуть миникарту" : "Развернуть миникарту"}>
         {open ? "–" : "▣"}
