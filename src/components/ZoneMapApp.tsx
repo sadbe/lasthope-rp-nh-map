@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { ZoomRail, SiteFooter } from '@/components/MapChrome';
 import {
   useZoneMapStore,
   BUILTIN_CATEGORIES,
@@ -287,9 +288,7 @@ function MenuPanel() {
       </div>
       <div className="stalker-scroll map-panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileSelect} />
-        <button className="s-btn" style={{ width: '100%' }} onClick={() => fileInputRef.current?.click()}>
-          ☠ <span className="btn-label">ЗАГРУЗИТЬ КАРТУ</span>
-        </button>
+        {/* Кнопка «ЗАГРУЗИТЬ КАРТУ» убрана: карта фиксированная, серверная. */}
         <button className="s-btn" style={{ width: '100%' }} onClick={handleExport}>
           ⬇ <span className="btn-label">ЭКСПОРТ JSON</span>
         </button>
@@ -514,6 +513,7 @@ function MapEngine() {
   const setMeasureModeOn = useZoneMapStore(s => s.setMeasureModeOn);
   const measureState = useZoneMapStore(s => s.measureState);
   const gridVisible = useZoneMapStore(s => s.gridVisible);
+  const mapWorldSizeM = useZoneMapStore(s => s.mapWorldSizeM);
   const activeLayers = useZoneMapStore(s => s.activeLayers);
   const addMarker = useZoneMapStore(s => s.addMarker);
   const addMeasurePoint = useZoneMapStore(s => s.addMeasurePoint);
@@ -922,15 +922,33 @@ function MapEngine() {
           {Array.from({ length: 21 }, (_, i) => {
             const sx = (i * 5 / 100) * STAGE_SIZE * view.scale + view.tx;
             if (sx < 0 || sx > viewportSize.w) return null;
-            return <line key={`vg${i}`} x1={sx} y1={0} x2={sx} y2={viewportSize.h} stroke="var(--border)" strokeWidth="0.5" />;
+            return <line key={`vg${i}`} x1={sx} y1={0} x2={sx} y2={viewportSize.h} stroke="var(--pale)" strokeWidth="1" />;
           })}
           {Array.from({ length: 21 }, (_, i) => {
             const sy = (i * 5 / 100) * STAGE_SIZE * view.scale + view.ty;
             if (sy < 0 || sy > viewportSize.h) return null;
-            return <line key={`hg${i}`} x1={0} y1={sy} x2={viewportSize.w} y2={sy} stroke="var(--border)" strokeWidth="0.5" />;
+            return <line key={`hg${i}`} x1={0} y1={sy} x2={viewportSize.w} y2={sy} stroke="var(--pale)" strokeWidth="1" />;
           })}
         </svg>
       )}
+
+      {/* Подписи сетки в километрах, прижаты к краям экрана, чтобы были
+          видны при любом положении карты. Шаг сетки — 5% мира. */}
+      {gridVisible && Array.from({ length: 21 }, (_, i) => {
+        const km = ((i * 5 / 100) * mapWorldSizeM / 1000).toFixed(1);
+        const sx = (i * 5 / 100) * STAGE_SIZE * view.scale + view.tx;
+        const sy = (i * 5 / 100) * STAGE_SIZE * view.scale + view.ty;
+        return (
+          <span key={`gl${i}`}>
+            {sx > 14 && sx < viewportSize.w && (
+              <span className="grid-label" style={{ left: sx + 3, top: 2 }}>{km}</span>
+            )}
+            {sy > 14 && sy < viewportSize.h && (
+              <span className="grid-label" style={{ left: 3, top: sy + 2 }}>{km}</span>
+            )}
+          </span>
+        );
+      })}
 
       {/* Все маркеры в ОДНОМ transform-контейнере: при панораме меняется
           одна строка transform вместо left/top у сотен элементов. */}
@@ -1013,12 +1031,8 @@ function MapEngine() {
         );
       })}
 
-      {!mapImageUrl && (
-        <div className="empty-zone-msg" style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-          <div style={{ fontSize: 24, fontFamily: 'var(--font-display)', letterSpacing: '0.2em', color: 'var(--text-dim)' }}>ЗОНА НЕ ЗАГРУЖЕНА</div>
-          <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', maxWidth: 300, textAlign: 'center' }}>Загрузите карту через меню ☰ или перетащите файл изображения сюда</div>
-        </div>
-      )}
+      {/* Плашка «ЗОНА НЕ ЗАГРУЖЕНА» убрана: карта грузится с сервера сама,
+          и просить пользователя её загрузить бессмысленно. */}
     </div>
   );
 }
@@ -1218,7 +1232,7 @@ function HeaderBar() {
       <div className="header-row">
         <div className="header-left">
           <DeadInsideTitle text="LAST HOPE" />
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text)', letterSpacing: '0.1em', marginTop: -2 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text)', letterSpacing: '0.1em', marginTop: 0 }}>
             <DeadSubtitle text="STALKER RP · DAYZ" />
           </div>
         </div>
@@ -1226,8 +1240,8 @@ function HeaderBar() {
           <ToolbarWide />
           {appMode === 'viewer' && (
             <a href="/admin" className="admin-link" style={{
-              fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-dim)',
-              letterSpacing: '0.1em', textDecoration: 'none', padding: '4px 6px',
+              fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)',
+              letterSpacing: '0.1em', textDecoration: 'none', padding: '6px 9px',
               border: '1px solid var(--border)', borderRadius: 2, marginLeft: 4,
               opacity: 0.5, transition: 'opacity 0.2s',
             }}
@@ -1242,6 +1256,8 @@ function HeaderBar() {
         <SearchBar />
         <MobileSearchBar />
       </div>
+      <ZoomRail />
+      <SiteFooter />
     </div>
   );
 }

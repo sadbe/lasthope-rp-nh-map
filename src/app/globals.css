@@ -209,7 +209,7 @@ html { touch-action: none; overscroll-behavior: none; }
   display: inline-block;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 18px;
+  font-size: 30px;
   letter-spacing: 0.15em;
   color: var(--text-bright);
 }
@@ -677,12 +677,12 @@ html { touch-action: none; overscroll-behavior: none; }
   border: 1px solid var(--border);
   color: var(--text-pale);
   font-family: var(--font-mono);
-  padding: 6px 10px;
+  padding: 9px 14px;
   cursor: pointer;
   transition: all 0.12s ease;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.2;
   white-space: nowrap;
   display: inline-flex;
@@ -771,7 +771,7 @@ html { touch-action: none; overscroll-behavior: none; }
    GRID OVERLAY
    ========================================================= */
 
-.grid-overlay-lines { position: absolute; inset: 0; pointer-events: none; opacity: 0.08; }
+.grid-overlay-lines { position: absolute; inset: 0; pointer-events: none; opacity: 0.45; }
 
 /* =========================================================
    MEASURE LINE — blood red accent
@@ -871,7 +871,7 @@ html { touch-action: none; overscroll-behavior: none; }
    SEARCH BAR — Desktop
    ========================================================= */
 
-.search-wide { width: 160px; font-size: 10px; }
+.search-wide { width: 260px; font-size: 13px; padding: 8px 10px; }
 .search-compact { display: none; }
 
 /* =========================================================
@@ -1332,4 +1332,65 @@ html { touch-action: none; overscroll-behavior: none; }
   .rad-pulse-overlay { opacity: 0.3; }
   .blood-ghost { opacity: 0; }
   .dust-particle { display: none; }
+}
+
+
+/* ===== ПОЛЗУНОК ЗУМА ===== */
+.zoom-rail {
+  position: fixed; right: 18px; top: 50%; transform: translateY(-50%);
+  z-index: 250; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--border);
+  padding: 10px 8px; border-radius: 3px;
+}
+.zoom-rail button {
+  width: 28px; height: 28px; background: var(--panel-raised);
+  border: 1px solid var(--border); color: var(--text-pale);
+  font-family: var(--font-mono); font-size: 15px; cursor: pointer; line-height: 1;
+}
+.zoom-rail button:hover { border-color: var(--pale-dim); color: var(--text-bright); }
+.zoom-rail input[type=range] {
+  -webkit-appearance: none; appearance: none; background: transparent;
+  writing-mode: vertical-lr; direction: rtl;
+  width: 22px; height: 150px; cursor: pointer;
+}
+.zoom-rail input[type=range]::-webkit-slider-runnable-track {
+  width: 3px; background: var(--border);
+}
+.zoom-rail input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 9px; margin-left: -6px;
+  background: var(--pale); border: 1px solid var(--text-bright);
+}
+.zoom-rail input[type=range]::-moz-range-track { width: 3px; background: var(--border); }
+.zoom-rail input[type=range]::-moz-range-thumb {
+  width: 15px; height: 9px; border-radius: 0;
+  background: var(--pale); border: 1px solid var(--text-bright);
+}
+.zoom-val {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+
+/* ===== ПОДПИСИ СЕТКИ ===== */
+.grid-label {
+  position: absolute; font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-dim); pointer-events: none; z-index: 16;
+  text-shadow: 0 0 3px var(--bg);
+}
+
+/* ===== ФУТЕР ===== */
+.site-footer {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 240;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 5px 14px;
+  background: linear-gradient(to top, var(--bg) 60%, transparent);
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+  letter-spacing: 0.08em; pointer-events: none;
+}
+.site-footer a { color: var(--pale); text-decoration: none; pointer-events: auto; }
+.site-footer a:hover { color: var(--text-bright); text-decoration: underline; }
+.site-footer .foot-right { display: flex; gap: 14px; }
+@media (max-width: 640px) {
+  .zoom-rail { display: none; }
+  .site-footer { font-size: 8px; padding: 3px 8px; }
+  .site-footer .foot-right { gap: 8px; }
 }
