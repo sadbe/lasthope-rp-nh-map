@@ -1320,8 +1320,21 @@ function ToolbarCompact() {
 // ===== HEADER BAR =====
 function HeaderBar() {
   const appMode = useZoneMapStore(s => s.appMode);
+  const headerRef = useRef<HTMLDivElement>(null);
+  // Панели позиционируются от нижнего края шапки, а она меняет высоту при
+  // переносе строк. Пишем реальную высоту в CSS-переменную вместо того,
+  // чтобы угадывать константу.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const apply = () => document.documentElement.style.setProperty('--header-h', `${el.offsetHeight}px`);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div className="header-bar">
+    <div className="header-bar" ref={headerRef}>
       <div className="header-row">
         <div className="header-left">
           <DeadInsideTitle text="LAST HOPE" />

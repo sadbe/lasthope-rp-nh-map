@@ -789,7 +789,12 @@ html { touch-action: none; overscroll-behavior: none; }
 
 .map-panel {
   position: absolute;
-  top: 0;
+  /* Шапка сайта висит поверх панели (z-index 200 против 100), поэтому
+     верхние ~120 px панели были физически недоступны — там оказались и её
+     собственный заголовок, и всё, что мы туда добавляли. Высоту шапки
+     меряет ResizeObserver и кладёт в --header-h: она разная на разных
+     ширинах, и подбирать константу бессмысленно. */
+  top: calc(var(--header-h, 124px) + 6px);
   bottom: 0;
   width: 220px;
   background: var(--panel);
