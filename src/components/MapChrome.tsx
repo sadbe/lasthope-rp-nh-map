@@ -82,7 +82,7 @@ export function MiniMap() {
       ro.disconnect();
       document.documentElement.style.setProperty('--mini-h', '0px');
     };
-  }, []);
+  }, [mapImageUrl, open, vp.w]);
 
   useEffect(() => {
     const upd = () => setVp({ w: window.innerWidth, h: window.innerHeight });

@@ -193,7 +193,7 @@ function SearchBar() {
               onClick={() => flyTo(m)}>
               <span className="search-hit-name">{m.name}</span>
               <span className="search-hit-coords">
-                {m.x !== undefined && m.z !== undefined ? `X ${m.x} Z ${m.z}` : ''}
+                {m.x !== undefined && m.z !== undefined ? `X ${m.x} Y ${m.z}` : ''}
               </span>
             </div>
           ))}
@@ -544,8 +544,12 @@ function ViewMarkerSheet({ marker, cat }: { marker: Marker; cat: Category }) {
   return (
     <div className="sheet-slide-up marker-sheet-container">
       {marker.imageUrl && (
-        <div style={{ marginBottom: 10 }}>
-          <img src={marker.imageUrl} alt={marker.name} style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 2, border: '1px solid var(--border)' }} />
+        // Стоял objectFit: 'cover' с жёсткой высотой 200 px: картинку
+        // обрезало по краям, и от вертикальных скринов оставалась полоска
+        // из середины. contain вписывает целиком, высота рамки идёт от
+        // пропорций самой картинки, тёмная подложка закрывает поля.
+        <div className="sheet-image-wrap">
+          <img src={marker.imageUrl} alt={marker.name} className="sheet-image" />
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -556,13 +560,13 @@ function ViewMarkerSheet({ marker, cat }: { marker: Marker; cat: Category }) {
       {/* Проценты по картинке не назовёшь в голосовой и не введёшь в игре.
           У меток из миссии игровые координаты уже лежат в x/z, у своих —
           считаем из процентов по размеру мира. */}
+      <div className="sheet-cat-line">{cat.name}</div>
       <div className="sheet-coords">
-        <span>{cat.name}</span>
         <span className="sheet-coord-val">
           {(() => {
             const gx = marker.x !== undefined ? marker.x : Math.round((marker.xPct / 100) * mapWorldSizeM);
             const gz = marker.z !== undefined ? marker.z : Math.round(mapWorldSizeM - (marker.yPct / 100) * mapWorldSizeM);
-            return `X ${gx} · Z ${gz}`;
+            return `X ${gx} · Y ${gz}`;
           })()}
         </span>
         <button className="sheet-coord-copy" title="Скопировать координаты"
@@ -643,7 +647,7 @@ function EditMarkerSheet({ marker, cat }: { marker: Marker; cat: Category }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {imageUrl && (
           <div style={{ position: 'relative' }}>
-            <img src={imageUrl} alt="preview" style={{ width: '100%', maxHeight: 120, objectFit: 'cover', borderRadius: 2, border: '1px solid var(--border)' }} />
+            <img src={imageUrl} alt="preview" className="sheet-image" />
             <button style={{ position: 'absolute', top: 4, right: 4, background: 'var(--danger)', color: '#fff', border: 'none', borderRadius: 2, fontSize: 8, fontFamily: 'var(--font-mono)', padding: '2px 6px', cursor: 'pointer' }} onClick={() => setImageUrl('')}>✕</button>
           </div>
         )}
@@ -778,7 +782,7 @@ const MarkersLayer = React.memo(function MarkersLayer(
                   {m.note && <div className="tip-note">{m.note.slice(0, 80)}{m.note.length > 80 ? '...' : ''}</div>}
                   <div className="tip-coords">
                     {`X ${m.x !== undefined ? m.x : Math.round((m.xPct / 100) * worldM)}`
-                      + ` · Z ${m.z !== undefined ? m.z : Math.round(worldM - (m.yPct / 100) * worldM)}`}
+                      + ` · Y ${m.z !== undefined ? m.z : Math.round(worldM - (m.yPct / 100) * worldM)}`}
                     {m.radiusM ? ` · r ${m.radiusM} м` : ''}
                   </div>
                 </div>
@@ -1590,9 +1594,6 @@ function HeaderBar() {
           )}
         </div>
       </div>
-      <ZoomRail />
-      <MiniMap />
-      <SiteFooter />
     </div>
   );
 }
@@ -1631,7 +1632,7 @@ function CoordHud() {
       const z = Math.round(w - ((e.clientY - ty) / (STAGE_SIZE * scale)) * w);
       lastRef.current = { x, z };
       const el = boxRef.current;
-      if (el) el.textContent = `X ${x}  Z ${z}`;
+      if (el) el.textContent = `X ${x}  Y ${z}`;
     };
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
@@ -1671,7 +1672,7 @@ function CoordHud() {
     // накрывало её нижние строки — отодвигаем на ширину панели.
     <div className={`coord-hud${activePanel === 'layers' ? ' coord-hud-shift' : ''}${frozen ? ' frozen' : ''}`}
       onClick={copy} title="Клик — зафиксировать и скопировать координаты">
-      <span ref={boxRef}>X —  Z —</span>
+      <span ref={boxRef}>X —  Y —</span>
       <span className="coord-hud-hint">
         {copied ? 'СКОПИРОВАНО' : frozen ? 'ЗАФИКСИРОВАНО · КЛИК = СНЯТЬ' : 'КЛИК = ФИКС + КОПИЯ'}
       </span>
@@ -1912,6 +1913,12 @@ export default function ZoneMapApp() {
       <CoordHud />
       <ViewPermalink />
       <HeaderBar />
+      {/* Вынесены из шапки: у .header-bar свой z-index, то есть свой
+          контекст наложения, и миникарта внутри него всё равно оказывалась
+          под карточкой метки — сравнивалась не она, а вся шапка. */}
+      <ZoomRail />
+      <MiniMap />
+      <SiteFooter />
       {activePanel === 'layers' && <LayersPanel />}
       {appMode === 'admin' && activePanel === 'menu' && <MenuPanel />}
       <MarkerSheet />

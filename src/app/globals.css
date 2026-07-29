@@ -1539,3 +1539,35 @@ html { touch-action: none; overscroll-behavior: none; }
     max-height: 50vh !important;
   }
 }
+
+/* ===== КАРТИНКА В КАРТОЧКЕ МЕТКИ =====
+   cover резал картинку по краям: от вертикального скрина оставалась полоса
+   из середины. Вписываем целиком, рамка живёт по пропорциям картинки. */
+.sheet-image-wrap {
+  margin-bottom: 10px;
+  border: 1px solid var(--border); border-radius: 2px;
+  background: #0d0d0d;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.sheet-image {
+  display: block; width: 100%; height: auto;
+  max-height: 40vh; object-fit: contain;
+  border-radius: 2px;
+}
+.tip-image { object-fit: contain !important; max-height: 130px !important; background: #0d0d0d; }
+.tip-image-wrap { max-height: 130px; background: #0d0d0d; }
+
+/* ===== КАРТОЧКА МЕТКИ: КОМПАКТНЕЕ ===== */
+.marker-sheet-container { padding: 12px; }
+.sheet-title { font-size: 14px; letter-spacing: 0.04em; line-height: 1.25; }
+.sheet-cat-line {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+  letter-spacing: 0.1em; margin-bottom: 4px;
+}
+.sheet-coords { font-size: 12px; margin-bottom: 8px; }
+.sheet-note { font-size: 12px; }
+.marker-sheet-container .s-btn { font-size: 12px; padding: 7px 10px; min-height: 30px; }
+
+/* ===== МИНИКАРТА ПОВЕРХ ВСЕГО, ЧТО СНИЗУ СПРАВА ===== */
+.mini-map { z-index: 260; }
