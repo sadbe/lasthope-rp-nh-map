@@ -1571,3 +1571,28 @@ html { touch-action: none; overscroll-behavior: none; }
 
 /* ===== МИНИКАРТА ПОВЕРХ ВСЕГО, ЧТО СНИЗУ СПРАВА ===== */
 .mini-map { z-index: 260; }
+
+/* ===== КАРТОЧКА ПО ЦЕНТРУ СНИЗУ =====
+   Правый нижний угол занят целиком: ползунок зума справа (z-index 250),
+   миникарта снизу (260), футер под ними. Карточка уходила под зум и жалась
+   к миникарте. Центр низа свободен всегда: панель слоёв слева, табло
+   координат слева внизу.
+
+   Сдвигаем через margin-left, а НЕ через transform: translateX(-50%) —
+   анимация появления .sheet-slide-up крутит transform: translateY(), и она
+   бы затёрла горизонтальный сдвиг, карточка прыгала бы вбок при открытии. */
+@media (min-width: 641px) {
+  .marker-sheet-container,
+  .new-layer-sheet {
+    left: 50% !important;
+    right: auto !important;
+    margin-left: -180px;
+    width: 360px !important;
+    max-width: calc(100vw - 40px) !important;
+    bottom: calc(var(--footer-h, 26px) + 12px) !important;
+    max-height: 62vh !important;
+  }
+}
+
+/* Кнопка копирования прилипала вплотную к последней цифре. */
+.sheet-coord-copy { margin-left: 6px; }
