@@ -3,7 +3,7 @@
  * Seed script — creates the first admin user in the AdminUser table.
  *
  * Usage:
- *   bun run db:seed
+ *   npm run db:seed
  *
  * Reads from env:
  *   ADMIN_EMAIL       — admin email (required)
@@ -29,7 +29,7 @@ async function main() {
     console.error('  ADMIN_EMAIL=admin@lasthope.zone');
     console.error('  ADMIN_PASSWORD=your-strong-password-here');
     console.error('');
-    console.error('Then run: bun run db:seed');
+    console.error('Then run: npm run db:seed');
     process.exit(1);
   }
 

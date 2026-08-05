@@ -17,14 +17,16 @@ npm run dev            # dev-сервер на :3000, лог дублирует�
 npm run build          # prisma generate && next build (типы и линт блокируют сборку)
 npm run lint           # eslint .
 npm run db:push        # prisma db push --accept-data-loss
-npm run db:seed        # первый админ из ADMIN_EMAIL/ADMIN_PASSWORD (требует bun)
+npm run db:seed        # первый админ из ADMIN_EMAIL/ADMIN_PASSWORD
+npm run tiles          # нарезать пирамиду тайлов из map-full.jpg
 ./scripts/smoke_test.sh  # curl-проверка публичных/защищённых роутов на localhost:3000
 ```
 
 Автотестов в репозитории нет — `smoke_test.sh` единственная проверка, она гоняет
 запущенный сервер curl'ом (коды ответов, редирект `/admin` → `/login`, логин-флоу).
 
-Пакетный менеджер — npm (`package-lock.json`), но `db:seed` написан под `bun run`.
+Пакетный менеджер — npm, bun больше не нужен нигде. Оба скрипта в `scripts/` имеют
+расширение `.mts` и запускаются голым `node`: Node 24 стирает типы сам.
 
 ## Архитектура
 
@@ -184,13 +186,23 @@ tsx не нужны (расширение `.mts`, иначе Node ругаетс
 - **shadcn/ui в проекте нет.** Слой `src/components/ui/` удалён — им никто не пользовался.
   Вся вёрстка карты своя, на `globals.css` (~1600 строк) и инлайн-стилях; тосты — через
   `pushToast` в сторе. Не тащите сюда `cn()` и радиксы, не спросив.
-- В `package.json` осталось около 60 зависимостей, реально импортируются 13. Чистка
-  назрела, но ещё не сделана.
+- Зависимости вычищены до 10 рантаймовых и 10 dev. Наследство шаблона — 27 пакетов
+  Radix, dnd-kit, mdxeditor, recharts, framer-motion и прочее — удалено, ни один из них
+  нигде не импортировался. Прежде чем добавлять пакет, посмотрите, не решается ли это
+  своим CSS: вёрстка здесь ручная.
+- **Tailwind остался, но только ради preflight.** Утилитарных классов в разметке нет,
+  все имена свои (`zone-app`, `intro-title`). `globals.css` тянет `@import "tailwindcss"`,
+  и убирать его нельзя: на сброс стилей завязана вся вёрстка. `tailwind.config.ts` удалён —
+  в Tailwind v4 он не читается без директивы `@config`, а его `content`-глоба указывали
+  на несуществующие `./app` и `./components`.
 - Пять групп в `mapgroupproto.xml` мода содержат мировые координаты вместо локальных —
-  лут оттуда спавнится за километры от здания (список в README).
-- Деплой: `git push` в `main` → Vercel собирает автоматически. Подробности в `DEPLOY.md`.
-- Python-скрипты сборки ассетов из README (`build_spawns_full.py`, `stitch_satmap.py`,
+  лут оттуда спавнится за километры от здания. Список и остальные особенности мода —
+  в `docs/mod-data.md`.
+- Деплой: `git push` в `main` → Vercel собирает автоматически. Подробности в
+  `docs/deploy.md`.
+- Python-скрипты сборки ассетов (`build_spawns_full.py`, `stitch_satmap.py`,
   `prepare_maps.py`) в репозитории отсутствуют — `.gitignore` вычищает `*.py`.
+  Что они делали, описано в `docs/mod-data.md`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
