@@ -1,0 +1,51 @@
+{
+  "version": "v1",
+  "basePath": "/assets/tiles/v1",
+  "format": "webp",
+  "tileSize": 256,
+  "nativeSize": 8000,
+  "minZoom": 0,
+  "maxZoom": 5,
+  "baseZoom": 2,
+  "axis": "x = колонка, запад→восток; y = строка, север→юг",
+  "levels": [
+    {
+      "z": 0,
+      "size": 250,
+      "cols": 1,
+      "tiles": 1
+    },
+    {
+      "z": 1,
+      "size": 500,
+      "cols": 2,
+      "tiles": 4
+    },
+    {
+      "z": 2,
+      "size": 1000,
+      "cols": 4,
+      "tiles": 16
+    },
+    {
+      "z": 3,
+      "size": 2000,
+      "cols": 8,
+      "tiles": 64
+    },
+    {
+      "z": 4,
+      "size": 4000,
+      "cols": 16,
+      "tiles": 256
+    },
+    {
+      "z": 5,
+      "size": 8000,
+      "cols": 32,
+      "tiles": 1024
+    }
+  ],
+  "generatedAt": "2026-08-05T10:57:23.510Z",
+  "quality": 80
+}
