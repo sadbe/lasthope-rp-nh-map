@@ -25,26 +25,6 @@ model AdminUser {
   updatedAt    DateTime @updatedAt
 }
 
-// Legacy scaffold models — kept for backward compat, not used by app.
-
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 // ===== ZONE MAP: shared, server-side data =====
 // These two tables are the actual fix for "everyone should see the same
 // points" — previously markers only ever lived in each player's browser
