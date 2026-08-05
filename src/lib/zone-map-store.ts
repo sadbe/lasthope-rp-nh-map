@@ -252,8 +252,10 @@ export function allMarkers(preset: Marker[], user: Marker[]): Marker[] {
 }
 
 // ===== HELPER: Calculate distances in meters =====
-// Chernarus DayZ map is ~15000m x 15000m
-export const MAP_SIZE_M = 15000;
+// Размер мира приходит аргументом: он лежит в map-meta.json и у разных карт
+// разный. Раньше здесь висела константа MAP_SIZE_M = 15000 от Черноруси —
+// на NH ChernobylZone (20480 м) линейка из-за неё врала на четверть.
+export const DEFAULT_WORLD_SIZE_M = 20480;
 
 export function calcDistances(points: MeasurePoint[], mapW: number, mapH: number): {
   totalDistanceM: number;
@@ -309,7 +311,7 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   satelliteSrc: null,
   topoSrc: null,
   showingTopo: false,
-  mapWorldSizeM: MAP_SIZE_M,
+  mapWorldSizeM: DEFAULT_WORLD_SIZE_M,
   activeLayers: {},
   presetVisible: true,
   markerScale: 1,
@@ -463,18 +465,14 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   // Mod-baked spawns/loot: a static file, not the database (it doesn't
   // change per-player and shouldn't be editable from the UI).
   loadPresetMarkers: async () => {
-    // Ищем в обоих местах: в public/assets/ (куда кладутся остальные
-    // ассеты карты) и в public/data/ — исторический путь. Раньше здесь был
-    // только /data/, из-за чего файл, положенный в assets по инструкции,
-    // просто не находился и метки не появлялись вообще.
-    const paths = ['/assets/spawns.json', '/data/spawns.json'];
+    // Файл лежит в public/assets/ рядом с остальными ассетами карты.
+    // Исторический путь /data/ убран: каталога нет, он в .gitignore, и
+    // единственным его следом был лишний 404 в консоли.
     let data: unknown = null;
-    for (const p of paths) {
-      try {
-        const res = await fetch(p);
-        if (res.ok) { data = await res.json(); break; }
-      } catch { /* пробуем следующий путь */ }
-    }
+    try {
+      const res = await fetch('/assets/spawns.json');
+      if (res.ok) data = await res.json();
+    } catch { /* файла нет — карта просто останется без меток миссии */ }
     if (!data) return;
 
     // Калибровочная поправка. Метки считаются из мировых координат мода,

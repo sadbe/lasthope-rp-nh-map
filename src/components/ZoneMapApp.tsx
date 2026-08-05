@@ -15,7 +15,6 @@ import {
   Marker,
   Category,
   MeasurePoint,
-  MAP_SIZE_M,
   calcDistances,
 } from '@/lib/zone-map-store';
 
