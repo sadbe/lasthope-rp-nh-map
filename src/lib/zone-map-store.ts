@@ -53,6 +53,37 @@ export interface MeasureState {
   segmentDistancesM: number[];
 }
 
+export interface TileLevel {
+  z: number;
+  /** Сторона карты на этом уровне в пикселях. */
+  size: number;
+  /** Тайлов по стороне; краевые неполные. */
+  cols: number;
+  tiles: number;
+}
+
+/**
+ * Описание пирамиды тайлов, лежит в /assets/tiles/manifest.json и собирается
+ * скриптом scripts/build-tiles.mts. Ничего из этого в коде не захардкожено:
+ * перенарежете с другим размером тайла или числом уровней — загрузчик
+ * подхватит сам.
+ *
+ * Имя тайла — {basePath}/{z}/{x}_{y}.{format}, где x КОЛОНКА (запад→восток),
+ * y СТРОКА (север→юг).
+ */
+export interface TileManifest {
+  version: string;
+  basePath: string;
+  format: string;
+  tileSize: number;
+  nativeSize: number;
+  minZoom: number;
+  maxZoom: number;
+  /** Постоянная подложка: грузится целиком сразу и никогда не снимается. */
+  baseZoom: number;
+  levels: TileLevel[];
+}
+
 export interface ZoneMapState {
   // Markers
   markers: Marker[];
@@ -84,6 +115,11 @@ export interface ZoneMapState {
   satelliteSrc: string | null;
   topoSrc: string | null;
   showingTopo: boolean;
+  // Пирамида тайлов. Пока она есть и mapImageUrl пуст, карта рисуется
+  // тайлами; mapImageUrl (ручная загрузка, drag&drop, топо-слой) её
+  // перекрывает. null — манифест не отдался, работает старый путь одной
+  // картинкой.
+  tileManifest: TileManifest | null;
   // Real-world size of the map in meters, for distance/ruler math — NOT the
   // same as mapImageWidth/Height (image pixels). Those only happen to match
   // meters if someone exported the satellite texture at exactly 1px=1m,
@@ -311,6 +347,7 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
   satelliteSrc: null,
   topoSrc: null,
   showingTopo: false,
+  tileManifest: null,
   mapWorldSizeM: DEFAULT_WORLD_SIZE_M,
   activeLayers: {},
   presetVisible: true,
@@ -563,10 +600,15 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
     } catch {}
   },
 
-  // Looks for map images sitting in /public/assets/ on whatever server this
-  // is hosted on — static files that ship with the deploy, not something
-  // stored per-browser. Silently no-ops if nothing is there yet (falls back
-  // to the manual "load image" button in the menu, same as before).
+  // Забирает статику карты, которая едет вместе с деплоем: манифест
+  // пирамиды тайлов, топографический слой и метрику мира.
+  //
+  // Зондирование /assets/map-satellite.{webp,jpg,png} отсюда убрано: снимок
+  // 8000×8000 больше не коммитится (он в .gitignore), вместо него тайлы, и
+  // три гарантированных 404 на каждой загрузке страницы были бы просто
+  // мусором в консоли. Ветка одиночной картинки жива — mapImageUrl всё так
+  // же заполняют ручная загрузка, drag&drop и переключатель топо-слоя, и
+  // пока он не пуст, картинка перекрывает тайлы.
   loadMapAssets: async () => {
     const tryLoadImage = (paths: string[], i = 0): Promise<string | null> =>
       new Promise((resolve) => {
@@ -577,22 +619,21 @@ export const useZoneMapStore = create<ZoneMapState>((set, get) => ({
         img.src = paths[i];
       });
 
-    const [sat, topo, meta] = await Promise.all([
-      // WebP первым: он втрое легче того же JPEG. Старые браузеры его
-      // не загрузят, onerror уронит проверку на следующий путь — тогда
-      // подхватится jpg, который остаётся в репозитории как запасной.
-      tryLoadImage(['/assets/map-satellite.webp', '/assets/map-satellite.jpg', '/assets/map-satellite.png']),
+    const [tiles, topo, meta] = await Promise.all([
+      fetch('/assets/tiles/manifest.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
       tryLoadImage(['/assets/map-topo.jpg', '/assets/map-topo.png']),
       fetch('/assets/map-meta.json').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ]);
 
-    if (sat) {
-      set(s => ({
-        satelliteSrc: sat,
-        // Only take over the displayed image if the player hasn't manually
-        // uploaded their own override for this session.
-        mapImageUrl: s.mapImageUrl ?? sat,
-      }));
+    // Манифест проверяем по существу, а не по факту «пришёл какой-то JSON»:
+    // при неудачном деплое сюда прилетит HTML страницы 404 с кодом 200,
+    // и без проверки загрузчик начал бы строить пути из undefined.
+    if (tiles
+      && typeof tiles.basePath === 'string'
+      && Number.isFinite(tiles.tileSize) && tiles.tileSize > 0
+      && Number.isFinite(tiles.maxZoom)
+      && Array.isArray(tiles.levels) && tiles.levels.length > 0) {
+      set({ tileManifest: tiles as TileManifest });
     }
     if (topo) set({ topoSrc: topo });
     if (meta && typeof meta.worldSizeM === 'number' && meta.worldSizeM > 0) {

@@ -15,6 +15,8 @@ import {
   Marker,
   Category,
   MeasurePoint,
+  TileLevel,
+  TileManifest,
   calcDistances,
 } from '@/lib/zone-map-store';
 
@@ -700,6 +702,139 @@ function MarkerSheet() {
   return <ViewMarkerSheet marker={marker} cat={cat} />;
 }
 
+// ===== СЛОЙ ТАЙЛОВ =====
+// Пирамида вместо одной картинки на 9 МБ: грузится только то, что видно.
+// При вписанной в экран карте это один тайл на 10 КБ вместо всего снимка.
+//
+// Слоя два и оба лежат в одной системе координат — квадрат nativeSize
+// пикселей, который родитель двигает и масштабирует своим transform:
+//
+//   низ  — уровень baseZoom (16 тайлов, ~150 КБ), грузится сразу и НИКОГДА
+//          не размонтируется. Он же аварийный фолбэк: пока детальные тайлы
+//          летят или не отдались вовсе, под дырой лежит мыльная, но
+//          правильная карта, а не белый экран;
+//   верх — тайлы уровня под текущий зум, проявляются по мере загрузки.
+//
+// Побочно исчезает старая беда одиночного <img>: предел браузера на размер
+// слоя (обычно 8192 px) больше не при делах, ни один элемент не крупнее
+// размера тайла.
+
+/** Тайлы уровня z, попадающие во вьюпорт, плюс кольцо запаса по периметру. */
+function visibleTiles(
+  level: TileLevel, tileSize: number,
+  view: { tx: number; ty: number; scale: number },
+  vpW: number, vpH: number,
+): { x: number; y: number }[] {
+  // Экранный размер всей карты. Сцена шире картинки, поэтому масштаб
+  // пересчитываем так же, как для <img>: k = scale * STAGE_SIZE / nativeSize.
+  const mapPx = STAGE_SIZE * view.scale;
+  if (mapPx <= 0) return [];
+
+  // Вьюпорт в долях карты (0..1), затем в индексах тайлов уровня.
+  const tilesPerSide = level.cols;
+  const frac = (px: number) => px / mapPx;
+  const idx = (f: number) => Math.floor(f * (level.size / tileSize));
+
+  const x0 = idx(frac(-view.tx)) - 1;
+  const x1 = idx(frac(vpW - view.tx)) + 1;
+  const y0 = idx(frac(-view.ty)) - 1;
+  const y1 = idx(frac(vpH - view.ty)) + 1;
+
+  const out: { x: number; y: number }[] = [];
+  for (let y = Math.max(0, y0); y <= Math.min(tilesPerSide - 1, y1); y++) {
+    for (let x = Math.max(0, x0); x <= Math.min(tilesPerSide - 1, x1); x++) {
+      out.push({ x, y });
+    }
+  }
+  return out;
+}
+
+const TileLayer = React.memo(function TileLayer(
+  { manifest, view, vpW, vpH }: {
+    manifest: TileManifest;
+    view: { tx: number; ty: number; scale: number };
+    vpW: number; vpH: number;
+  }
+) {
+  const { tileSize, nativeSize, basePath, format, minZoom, maxZoom, baseZoom, levels } = manifest;
+
+  // Выбор уровня: нужен тот, где пиксель тайла примерно равен пикселю
+  // экрана. Мельче — мыло, крупнее — качаем в несколько раз больше байт,
+  // чем экран способен показать. devicePixelRatio обязателен, иначе на
+  // retina-телефоне карта всегда мыльная.
+  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+  const wantPx = STAGE_SIZE * view.scale * dpr;
+  let z = maxZoom;
+  for (const l of levels) {
+    if (l.size >= wantPx) { z = l.z; break; }
+  }
+  z = Math.max(minZoom, Math.min(maxZoom, z));
+
+  const base = levels.find(l => l.z === baseZoom) ?? levels[0];
+  const level = levels.find(l => l.z === z) ?? base;
+
+  // Тайл занимает tileSize пикселей уровня; в координатах картинки это
+  // tileSize * (nativeSize / level.size). Краевые тайлы неполные, поэтому
+  // размер каждого считаем отдельно, иначе по правому и нижнему краю
+  // карта растянется на ширину недостающих пикселей.
+  const renderLevel = (l: TileLevel, tiles: { x: number; y: number }[], key: string) => {
+    const unit = nativeSize / l.size;
+    return tiles.map(({ x, y }) => {
+      const w = Math.min(tileSize, l.size - x * tileSize);
+      const h = Math.min(tileSize, l.size - y * tileSize);
+      return (
+        <img
+          key={`${key}-${x}_${y}`}
+          src={`${basePath}/${l.z}/${x}_${y}.${format}`}
+          alt=""
+          draggable={false}
+          loading="eager"
+          decoding="async"
+          style={{
+            position: 'absolute',
+            left: x * tileSize * unit,
+            top: y * tileSize * unit,
+            width: w * unit,
+            height: h * unit,
+            // Tailwind preflight ставит img max-width: 100%, и он режет
+            // ширину тайла до ширины родителя — та же беда, что была у
+            // цельной картинки.
+            maxWidth: 'none',
+            maxHeight: 'none',
+            // Стыки: браузер округляет дробные координаты по-разному для
+            // соседних элементов, и между тайлами проступают волосяные
+            // щели. Перекрываем на полпикселя в масштабе картинки.
+            outline: '0.5px solid transparent',
+            pointerEvents: 'none',
+            display: 'block',
+          }}
+        />
+      );
+    });
+  };
+
+  // Подложка целиком: она маленькая (у z2 это 16 тайлов) и должна лежать
+  // под всей картой, а не только под вьюпортом — иначе при быстрой панораме
+  // за краем экрана окажется пустота.
+  const baseTiles: { x: number; y: number }[] = [];
+  for (let y = 0; y < base.cols; y++) for (let x = 0; x < base.cols; x++) baseTiles.push({ x, y });
+
+  const detail = level.z === base.z ? [] : visibleTiles(level, tileSize, view, vpW, vpH);
+
+  return (
+    <div style={{
+      position: 'absolute', left: 0, top: 0,
+      width: nativeSize, height: nativeSize,
+      transform: `translate3d(${view.tx}px, ${view.ty}px, 0) scale(${(view.scale * STAGE_SIZE) / nativeSize})`,
+      transformOrigin: '0 0',
+      pointerEvents: 'none',
+    }}>
+      {renderLevel(base, baseTiles, 'base')}
+      {renderLevel(level, detail, `z${level.z}`)}
+    </div>
+  );
+});
+
 // ===== MARKER LAYER =====
 // Метки живут в координатах СЦЕНЫ и не зависят ни от сдвига, ни от масштаба:
 // и то и другое делает transform родителя. Поэтому React перерисовывает
@@ -792,6 +927,7 @@ const MarkersLayer = React.memo(function MarkersLayer(
 function MapEngine() {
   const view = useZoneMapStore(s => s.view);
   const setView = useZoneMapStore(s => s.setView);
+  const tileManifest = useZoneMapStore(s => s.tileManifest);
   const mapImageUrl = useZoneMapStore(s => s.mapImageUrl);
   const addMode = useZoneMapStore(s => s.addMode);
   const appMode = useZoneMapStore(s => s.appMode);
@@ -861,7 +997,13 @@ function MapEngine() {
     });
   }, [setView]);
 
-  useEffect(() => { if (mapImageUrl) setTimeout(fitToViewport, 150); }, [mapImageUrl, fitToViewport]);
+  // Вписываем карту в экран, когда появилось что рисовать: либо приехал
+  // манифест тайлов, либо игрок подсунул свою картинку. Раньше условие
+  // висело только на mapImageUrl, и с тайлами карта осталась бы в
+  // масштабе по умолчанию.
+  useEffect(() => {
+    if (mapImageUrl || tileManifest) setTimeout(fitToViewport, 150);
+  }, [mapImageUrl, tileManifest, fitToViewport]);
 
   // Image load handler
   const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -1220,6 +1362,18 @@ function MapEngine() {
     >
       <div className="rad-pulse-overlay" />
       <div className="blood-ghost" />
+
+      {/* Тайлы — основной путь. Уступают место, когда игрок подсунул свою
+          картинку или переключился на топо-слой: там mapImageUrl не пуст,
+          и рисовать оба слоя разом смысла нет. */}
+      {tileManifest && !mapImageUrl && (
+        <TileLayer
+          manifest={tileManifest}
+          view={view}
+          vpW={viewportSize.w}
+          vpH={viewportSize.h}
+        />
+      )}
 
       {mapImageUrl && (() => {
         // Элемент держим в НАТУРАЛЬНОМ размере картинки (8000 px), а разницу
