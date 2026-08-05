@@ -50,3 +50,6 @@ public/data/
 # public/assets/map-satellite.jpg
 # public/assets/map-satellite.webp
 # public/assets/map-satellite-mobile.*
+
+# Артефакты сборки TypeScript
+tsconfig.tsbuildinfo
