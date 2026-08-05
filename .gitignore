@@ -46,10 +46,18 @@ prisma/*.db-journal
 # Пустые дубликаты
 public/data/
 
-# Большие карты (если решите убрать из репо)
-# public/assets/map-satellite.jpg
-# public/assets/map-satellite.webp
-# public/assets/map-satellite-mobile.*
+# Исходник карты и полноразмерные снимки — НАМЕРЕННО вне git.
+# В репозиторий едут только тайлы public/assets/tiles/ и манифест: снимок
+# 8000×8000 это 14,7 МБ в jpg и 9,2 МБ в webp, из-за него историю уже
+# один раз переписывали. Фолбэк на случай неотдавшихся тайлов — уровень z2
+# пирамиды (1000×1000, 150 КБ), полноразмерный файл для этого не нужен.
+# Строки НЕ комментировать: они и стоят затем, чтобы git add -A не утащил
+# снимок обратно.
+map-full.jpg
+public/assets/map-satellite.jpg
+public/assets/map-satellite.webp
+public/assets/map-satellite.png
+public/assets/map-satellite-mobile.*
 
 # Артефакты сборки TypeScript
 tsconfig.tsbuildinfo
