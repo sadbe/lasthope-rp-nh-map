@@ -1,6 +1,62 @@
 import type { Metadata, Viewport } from "next";
+import { Oswald, Share_Tech_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import tileManifest from "../../public/assets/tiles/manifest.json";
+
+// Шрифты кладутся в бандл и отдаются с нашего домена. Раньше здесь был
+// <link rel="stylesheet"> на fonts.googleapis.com — обычный stylesheet
+// блокирует первую отрисовку, а Google из России ходит как повезёт: то мгновенно,
+// то в таймаут. Отсюда был белый экран на несколько секунд. Ни одного запроса
+// к Google на странице больше нет, проверяйте это при правках.
+//
+// Кириллица нужна: интерфейс русский. У Share Tech Mono её нет вовсе (в данных
+// next/font у него только latin), поэтому русский текст в моноширинных подписях
+// падает на системный monospace — так было и раньше с Google Fonts, поведение
+// не изменилось.
+const oswald = Oswald({
+  subsets: ["cyrillic", "latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-oswald",
+  display: "swap",
+});
+
+const shareTechMono = Share_Tech_Mono({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-share-tech-mono",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["cyrillic", "latin"],
+  weight: ["400", "500"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+// Тайлы базового уровня (z2, 16 штук, ~150 КБ) — тот самый фолбэк, который всегда
+// смонтирован под детальным слоем. Без предзагрузки браузер узнаёт про них только
+// после того, как разберёт JS и сходит за манифестом: HTML -> JS -> манифест ->
+// тайлы, четыре последовательных круга до первой картинки. С <link rel="preload">
+// они едут параллельно с JS.
+//
+// Манифест импортируется, а не читается через fs: путь к тайлам и baseZoom берутся
+// из него же, ничего не захардкожено, и файл попадает в бандл — иначе на Vercel
+// его не окажется рядом с серверной функцией.
+const baseTileUrls: string[] = (() => {
+  const level = tileManifest.levels.find(l => l.z === tileManifest.baseZoom);
+  if (!level) return [];
+  const urls: string[] = [];
+  // x — колонка (запад->восток), y — строка (север->юг). Уровень квадратный,
+  // поэтому cols годится и для строк.
+  for (let y = 0; y < level.cols; y++) {
+    for (let x = 0; x < level.cols; x++) {
+      urls.push(`${tileManifest.basePath}/${tileManifest.baseZoom}/${x}_${y}.${tileManifest.format}`);
+    }
+  }
+  return urls;
+})();
 
 export const metadata: Metadata = {
   title: "LAST HOPE // STALKER RP — DayZ Interactive Map",
@@ -22,14 +78,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html
+      lang="ru"
+      suppressHydrationWarning
+      className={`${oswald.variable} ${shareTechMono.variable} ${inter.variable}`}
+    >
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Share+Tech+Mono&family=Inter:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
+        {baseTileUrls.map(href => (
+          <link key={href} rel="preload" as="image" href={href} />
+        ))}
       </head>
       <body className="zone-app">
         <Providers>{children}</Providers>

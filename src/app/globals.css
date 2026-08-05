@@ -40,10 +40,13 @@
   --text-pale: #dddddd;
   --icon-fg: #f5f5f5;
 
-  --font-display: 'Oswald', sans-serif;
-  --font-mono: 'Share Tech Mono', monospace;
-  --font-body: 'Inter', sans-serif;
-  --font-dead: 'Oswald', sans-serif;
+  /* Имена шрифтов приходят из next/font (см. layout.tsx) и отдаются с нашего
+     домена. Не подставляйте сюда 'Oswald' и т.п. напрямую: имя семейства
+     next/font генерирует само, и захардкоженное название просто не совпадёт. */
+  --font-display: var(--font-oswald), sans-serif;
+  --font-mono: var(--font-share-tech-mono), monospace;
+  --font-body: var(--font-inter), sans-serif;
+  --font-dead: var(--font-oswald), sans-serif;
 
   --background: #1a1a1a;
   --foreground: #cccccc;
@@ -1041,9 +1044,9 @@ html { overscroll-behavior: none; }
   --text-bright: #f2f2f2;
   --text-dim: #888888;
   --pale: #c0c0c0;
-  --font-display: 'Oswald', sans-serif;
-  --font-mono: 'Share Tech Mono', monospace;
-  --font-body: 'Inter', sans-serif;
+  --font-display: var(--font-oswald), sans-serif;
+  --font-mono: var(--font-share-tech-mono), monospace;
+  --font-body: var(--font-inter), sans-serif;
   /* Intro-specific overrides — dead gray palette */
   --intro-title: #e8e8e8;
   --intro-title-glow: rgba(255,255,255,0.35);
