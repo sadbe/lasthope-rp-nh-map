@@ -1214,10 +1214,6 @@ function MapEngine() {
       className="map-viewport"
       className="map-viewport"
       className="map-viewport"
-      className="map-viewport"
-      className="map-viewport"
-      className="map-viewport"
-      className="map-viewport"
       style={{ position: 'absolute', inset: 0, overflow: 'hidden', cursor: cursorStyle }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -1269,9 +1265,7 @@ function MapEngine() {
         // решёткой — как будто смотришь через забор. Теперь линии считаются
         // из координат сцены и двигаются вместе с картой. Шаг — 5% мира
         // (~1 км при 20480 м); рисуем только линии, попавшие в экран.
-        <svg className="map-viewport"
-      className="map-viewport"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} className="grid-overlay-lines">
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} className="grid-overlay-lines">
           {Array.from({ length: 21 }, (_, i) => {
             const sx = (i * 5 / 100) * STAGE_SIZE * view.scale + view.tx;
             if (sx < 0 || sx > viewportSize.w) return null;
@@ -1329,9 +1323,7 @@ function MapEngine() {
 
       {/* Measure path — multi-point polyline */}
       {measureScreenPts.length >= 1 && (
-        <svg className="map-viewport"
-      className="map-viewport"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 15 }}>
+        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 15 }}>
           {measureScreenPts.map((p, i) => (
             <circle key={i} cx={p.x} cy={p.y} r={4} className="measure-point" />
           ))}

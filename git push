@@ -1,0 +1,242 @@
+[1mdiff --git a/package-lock.json b/package-lock.json[m
+[1mindex abb9376..e973e02 100644[m
+[1m--- a/package-lock.json[m
+[1m+++ b/package-lock.json[m
+[36m@@ -74,7 +74,6 @@[m
+         "tailwindcss-animate": "^1.0.7",[m
+         "uuid": "^11.1.0",[m
+         "vaul": "^1.1.2",[m
+[31m-        "z-ai-web-dev-sdk": "^0.0.18",[m
+         "zod": "^4.0.2",[m
+         "zustand": "^5.0.6"[m
+       },[m
+[36m@@ -12291,18 +12290,6 @@[m
+         "url": "https://github.com/sponsors/sindresorhus"[m
+       }[m
+     },[m
+[31m-    "node_modules/z-ai-web-dev-sdk": {[m
+[31m-      "version": "0.0.18",[m
+[31m-      "license": "ISC",[m
+[31m-      "bin": {[m
+[31m-        "z-ai": "dist/cli.js",[m
+[31m-        "z-ai-generate": "dist/cli.js"[m
+[31m-      },[m
+[31m-      "engines": {[m
+[31m-        "bun": ">=1.3.0",[m
+[31m-        "node": ">=20.0.0"[m
+[31m-      }[m
+[31m-    },[m
+     "node_modules/zod": {[m
+       "version": "4.4.3",[m
+       "license": "MIT",[m
+[1mdiff --git a/package.json b/package.json[m
+[1mindex 9493fe8..e9512ee 100755[m
+[1m--- a/package.json[m
+[1m+++ b/package.json[m
+[36m@@ -80,7 +80,6 @@[m
+     "tailwindcss-animate": "^1.0.7",[m
+     "uuid": "^11.1.0",[m
+     "vaul": "^1.1.2",[m
+[31m-    "z-ai-web-dev-sdk": "^0.0.18",[m
+     "zod": "^4.0.2",[m
+     "zustand": "^5.0.6"[m
+   },[m
+[1mdiff --git a/src/app/globals.css b/src/app/globals.css[m
+[1mindex 1bb046f..6cdda3d 100755[m
+[1m--- a/src/app/globals.css[m
+[1m+++ b/src/app/globals.css[m
+[36m@@ -95,7 +95,8 @@[m
+ * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }[m
+ html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }[m
+ /* none, а не manipulation: manipulation оставляет браузеру пинч-зум. */[m
+[31m-html { touch-action: none; overscroll-behavior: none; }[m
+[32m+[m[32mhtml { overscroll-behavior: none; }[m
+[32m+[m[32m.map-viewport { touch-action: none; }[m
+ [m
+ /* =========================================================[m
+    ZONE APP ROOT — Full viewport lock[m
+[36m@@ -668,13 +669,8 @@[m [mhtml { touch-action: none; overscroll-behavior: none; }[m
+ [m
+ .s-btn:active { background: var(--ash); transform: scale(0.97); }[m
+ [m
+[31m-.s-btn:focus { outline: none; }[m
+[31m-.s-btn:focus-visible { outline: 1px solid var(--pale-dim); outline-offset: -1px; }[m
+[32m+[m[32m.s-btn:focus:not(:focus-visible) { outline: none; }[m
+ [m
+[31m-/* Touch devices — no focus glow after tap */[m
+[31m-@media (hover: none) and (pointer: coarse) {[m
+[31m-  .s-btn:focus-visible { outline: none; }[m
+[31m-}[m
+ [m
+ .s-btn.active {[m
+   background: var(--ash);[m
+[1mdiff --git a/src/app/layout.tsx b/src/app/layout.tsx[m
+[1mindex 6e3593e..e880e28 100755[m
+[1m--- a/src/app/layout.tsx[m
+[1m+++ b/src/app/layout.tsx[m
+[36m@@ -14,8 +14,6 @@[m [mexport const metadata: Metadata = {[m
+ export const viewport: Viewport = {[m
+   width: "device-width",[m
+   initialScale: 1,[m
+[31m-  maximumScale: 1,[m
+[31m-  userScalable: false,[m
+ };[m
+ [m
+ export default function RootLayout({[m
+[1mdiff --git a/src/app/page.tsx b/src/app/page.tsx[m
+[1mindex 40560a7..1933e84 100755[m
+[1m--- a/src/app/page.tsx[m
+[1m+++ b/src/app/page.tsx[m
+[36m@@ -30,9 +30,6 @@[m [mfunction IntroOverlay({ onDismiss }: { onDismiss: () => void }) {[m
+           Наведите на маркер — увидите подробности.[m
+         </div>[m
+         <div className="intro-hint">КЛИКНИТЕ, ЧТОБЫ ВОЙТИ</div>[m
+[31m-        <div style={{ marginTop: 24, fontFamily: 'var(--font-mono)', fontSize: 8, color: '#888', letterSpacing: '0.1em', opacity: 0.4 }}>[m
+[31m-          <a href="/admin" style={{ color: '#888', textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>Админ-панель</a>[m
+[31m-        </div>[m
+         <div className="intro-corner intro-corner-tl" />[m
+         <div className="intro-corner intro-corner-tr" />[m
+         <div className="intro-corner intro-corner-bl" />[m
+[1mdiff --git a/src/components/ZoneMapApp.tsx b/src/components/ZoneMapApp.tsx[m
+[1mindex 54a2647..25b9dbe 100755[m
+[1m--- a/src/components/ZoneMapApp.tsx[m
+[1m+++ b/src/components/ZoneMapApp.tsx[m
+[36m@@ -22,12 +22,6 @@[m [mimport {[m
+ // Viewer mode — simplified toolbar, no admin actions, marker click shows info only[m
+ type AppMode = 'viewer' | 'admin';[m
+ [m
+[31m-// Blur button after click — prevents stuck focus highlight on mobile[m
+[31m-function blurBtn(e: React.MouseEvent | React.TouchEvent) {[m
+[31m-  const btn = e.currentTarget as HTMLElement;[m
+[31m-  btn.blur();[m
+[31m-}[m
+[31m-[m
+ // ===== DETERMINISTIC RANDOM (no hydration mismatch) =====[m
+ function seededRandom(seed: number): number {[m
+   const x = Math.sin(seed) * 10000;[m
+[36m@@ -60,10 +54,9 @@[m [mfunction DeadSubtitle({ text }: { text: string }) {[m
+   );[m
+ }[m
+ [m
+[31m-// ===== GEIGER COUNTER =====[m
+[32m+[m[32m// ===== GEIGER COUNTER (Fully local, no global store re-renders) =====[m
+ function GeigerCounter() {[m
+[31m-  const geigerValue = useZoneMapStore(s => s.geigerValue);[m
+[31m-  const setGeigerValue = useZoneMapStore(s => s.setGeigerValue);[m
+[32m+[m[32m  const [geigerValue, setGeigerValue] = useState(0);[m
+   const [tickKey, setTickKey] = useState(0);[m
+ [m
+   useEffect(() => {[m
+[36m@@ -73,7 +66,7 @@[m [mfunction GeigerCounter() {[m
+       if (val > 60) setTickKey(k => k + 1);[m
+     }, 800);[m
+     return () => clearInterval(interval);[m
+[31m-  }, [setGeigerValue]);[m
+[32m+[m[32m  }, []);[m
+ [m
+   const pct = Math.min(geigerValue / 120, 1);[m
+   const color = pct < 0.33 ? 'var(--toxic)' : pct < 0.66 ? 'var(--amber)' : 'var(--blood-bright)';[m
+[36m@@ -1218,6 +1211,9 @@[m [mfunction MapEngine() {[m
+ [m
+   return ([m
+     <div ref={viewportRef}[m
+[32m+[m[32m      className="map-viewport"[m
+[32m+[m[32m      className="map-viewport"[m
+[32m+[m[32m      className="map-viewport"[m
+       style={{ position: 'absolute', inset: 0, overflow: 'hidden', cursor: cursorStyle }}[m
+       onPointerDown={handlePointerDown}[m
+       onPointerMove={handlePointerMove}[m
+[36m@@ -1431,33 +1427,33 @@[m [mfunction ToolbarWide() {[m
+   return ([m
+     <div className="toolbar-wide">[m
+       {appMode === 'admin' && ([m
+[31m-        <button className={`s-btn ${addMode ? 'blood-active' : ''}`} onPointerUp={blurBtn} onClick={() => {[m
+[32m+[m[32m        <button className={`s-btn ${addMode ? 'blood-active' : ''}`} onClick={() => {[m
+           if (addMode) { setAddMode(false); return; }[m
+           setAddMode(true); setMeasureModeOn(false); setMeasureState({ active: false, points: [], totalDistanceM: 0, segmentDistancesM: [] });[m
+         }}><svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" strokeWidth="2"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="2"/></svg> <span className="btn-label">ТОЧКА</span></button>[m
+       )}[m
+[31m-      <button className={`s-btn ${measureModeOn ? 'amber-active' : ''}`} onPointerUp={blurBtn} onClick={() => {[m
+[32m+[m[32m      <button className={`s-btn ${measureModeOn ? 'amber-active' : ''}`} onClick={() => {[m
+         if (measureModeOn) { setMeasureModeOn(false); setMeasureState({ active: false, points: [], totalDistanceM: 0, segmentDistancesM: [] }); return; }[m
+         setMeasureModeOn(true); setAddMode(false);[m
+       }}><svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="2" y1="14" x2="8" y2="2" stroke="currentColor" strokeWidth="1.5"/><line x1="8" y1="2" x2="14" y2="14" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="2" r="1.5" fill="currentColor"/><circle cx="2" cy="14" r="1" fill="currentColor"/><circle cx="14" cy="14" r="1" fill="currentColor"/></svg> <span className="btn-label">ЛИНЕЙКА</span></button>[m
+[31m-      <button className={`s-btn ${gridVisible ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setGridVisible(!gridVisible)}>[m
+[32m+[m[32m      <button className={`s-btn ${gridVisible ? 'active' : ''}`} onClick={() => setGridVisible(!gridVisible)}>[m
+         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="0" y1="4" x2="16" y2="4" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="8" x2="16" y2="8" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="12" x2="16" y2="12" stroke="currentColor" strokeWidth="0.8"/><line x1="4" y1="0" x2="4" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="8" y1="0" x2="8" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" strokeWidth="0.8"/></svg> <span className="btn-label">СЕТКА</span>[m
+       </button>[m
+       {topoSrc && ([m
+[31m-        <button className={`s-btn ${showingTopo ? 'active' : ''}`} onPointerUp={blurBtn} onClick={toggleTopo} title="Спутник / Топография">[m
+[32m+[m[32m        <button className={`s-btn ${showingTopo ? 'active' : ''}`} onClick={toggleTopo} title="Спутник / Топография">[m
+           <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><path d="M1 10 L5 5 L8 8 L11 4 L15 10" fill="none" stroke="currentColor" strokeWidth="1.3"/><path d="M1 13 L5 8 L8 11 L11 7 L15 13" fill="none" stroke="currentColor" strokeWidth="1.3" opacity="0.5"/></svg>[m
+           <span className="btn-label">{showingTopo ? 'ТОПО' : 'СПУТНИК'}</span>[m
+         </button>[m
+       )}[m
+[31m-      <button className={`s-btn ${activePanel === 'layers' ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setActivePanel(activePanel === 'layers' ? 'none' : 'layers')}>[m
+[32m+[m[32m      <button className={`s-btn ${activePanel === 'layers' ? 'active' : ''}`} onClick={() => setActivePanel(activePanel === 'layers' ? 'none' : 'layers')}>[m
+         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><rect x="2" y="2" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="6" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="10" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/></svg> <span className="btn-label">СЛОИ</span>[m
+       </button>[m
+       {appMode === 'admin' && ([m
+[31m-        <button className={`s-btn ${activePanel === 'menu' ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setActivePanel(activePanel === 'menu' ? 'none' : 'menu')}>[m
+[32m+[m[32m        <button className={`s-btn ${activePanel === 'menu' ? 'active' : ''}`} onClick={() => setActivePanel(activePanel === 'menu' ? 'none' : 'menu')}>[m
+           <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" strokeWidth="1.5"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5"/><line x1="2" y1="13" x2="14" y2="13" stroke="currentColor" strokeWidth="1.5"/></svg> <span className="btn-label">МЕНЮ</span>[m
+         </button>[m
+       )}[m
+[31m-      <button className={`s-btn ${themeMode === 'light' ? 'amber-active' : ''}`} onPointerUp={blurBtn} onClick={() => setThemeMode(themeMode === 'dark' ? 'light' : 'dark')}>[m
+[32m+[m[32m      <button className={`s-btn ${themeMode === 'light' ? 'amber-active' : ''}`} onClick={() => setThemeMode(themeMode === 'dark' ? 'light' : 'dark')}>[m
+         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon">[m
+           {themeMode === 'dark' ? ([m
+             <>[m
+[36m@@ -1476,7 +1472,7 @@[m [mfunction ToolbarWide() {[m
+           )}[m
+         </svg> <span className="btn-label">{themeMode === 'dark' ? 'СВЕТ' : 'ТЬМА'}</span>[m
+       </button>[m
+[31m-      <button className={`s-btn ${fullscreenMode ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setFullscreenMode(!fullscreenMode)}>[m
+[32m+[m[32m      <button className={`s-btn ${fullscreenMode ? 'active' : ''}`} onClick={() => setFullscreenMode(!fullscreenMode)}>[m
+         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><polyline points="2,6 2,2 6,2" fill="none" stroke="currentColor" strokeWidth="1.5"/><polyline points="10,2 14,2 14,6" fill="none" stroke="currentColor" strokeWidth="1.5"/><polyline points="14,10 14,14 10,14" fill="none" stroke="currentColor" strokeWidth="1.5"/><polyline points="6,14 2,14 2,10" fill="none" stroke="currentColor" strokeWidth="1.5"/></svg> <span className="btn-label">ФУЛСКРИН</span>[m
+       </button>[m
+     </div>[m
+[36m@@ -1510,7 +1506,7 @@[m [mfunction ToolbarCompact() {[m
+   return ([m
+     <div className="toolbar-compact">[m
+       {appMode === 'admin' && ([m
+[31m-        <button className={`s-btn mob-btn ${addMode ? 'blood-active' : ''}`} onPointerUp={blurBtn} onClick={() => {[m
+[32m+[m[32m        <button className={`s-btn mob-btn ${addMode ? 'blood-active' : ''}`} onClick={() => {[m
+           if (addMode) { setAddMode(false); return; }[m
+           setAddMode(true); setMeasureModeOn(false); setMeasureState({ active: false, points: [], totalDistanceM: 0, segmentDistancesM: [] });[m
+         }}>[m
+[36m@@ -1518,29 +1514,29 @@[m [mfunction ToolbarCompact() {[m
+           <span className="mob-txt">Точка</span>[m
+         </button>[m
+       )}[m
+[31m-      <button className={`s-btn mob-btn ${measureModeOn ? 'amber-active' : ''}`} onPointerUp={blurBtn} onClick={() => {[m
+[32m+[m[32m      <button className={`s-btn mob-btn ${measureModeOn ? 'amber-active' : ''}`} onClick={() => {[m
+         if (measureModeOn) { setMeasureModeOn(false); setMeasureState({ active: false, points: [], totalDistanceM: 0, segmentDistancesM: [] }); return; }[m
+         setMeasureModeOn(true); setAddMode(false);[m
+       }}>[m
+         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="2" y1="14" x2="8" y2="2" stroke="currentColor" strokeWidth="1.5"/><line x1="8" y1="2" x2="14" y2="14" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="2" r="1.5" fill="currentColor"/><circle cx="2" cy="14" r="1" fill="currentColor"/><circle cx="14" cy="14" r="1" fill="currentColor"/></svg>[m
+         <span className="mob-txt">Линейка</span>[m
+       </button>[m
+[31m-      <button className={`s-btn mob-btn ${gridVisible ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setGridVisible(!gridVisible)}>[m
+[32m+[m[32m      <button className={`s-btn mob-btn ${gridVisible ? 'active' : ''}`} onClick={() => setGridVisible(!gridVisible)}>[m
+         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="0" y1="4" x2="16" y2="4" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="8" x2="16" y2="8" stroke="currentColor" strokeWidth="0.8"/><line x1="0" y1="12" x2="16" y2="12" stroke="currentColor" strokeWidth="0.8"/><line x1="4" y1="0" x2="4" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="8" y1="0" x2="8" y2="16" stroke="currentColor" strokeWidth="0.8"/><line x1="12" y1="0" x2="12" y2="16" stroke="currentColor" strokeWidth="0.8"/></svg>[m
+         <span className="mob-txt">Сетка</span>[m
+       </button>[m
+       {topoSrc && ([m
+[31m-        <button className={`s-btn mob-btn ${showingTopo ? 'active' : ''}`} onPointerUp={blurBtn} onClick={toggleTopo}>[m
+[32m+[m[32m        <button className={`s-btn mob-btn ${showingTopo ? 'active' : ''}`} onClick={toggleTopo}>[m
+           <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><path d="M1 10 L5 5 L8 8 L11 4 L15 10" fill="none" stroke="currentColor" strokeWidth="1.3"/><path d="M1 13 L5 8 L8 11 L11 7 L15 13" fill="none" stroke="currentColor" strokeWidth="1.3" opacity="0.5"/></svg>[m
+           <span className="mob-txt">{showingTopo ? 'Топо' : 'Спутник'}</span>[m
+         </button>[m
+       )}[m
+[31m-      <button className={`s-btn mob-btn ${activePanel === 'layers' ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setActivePanel(activePanel === 'layers' ? 'none' : 'layers')}>[m
+[32m+[m[32m      <button className={`s-btn mob-btn ${activePanel === 'layers' ? 'active' : ''}`} onClick={() => setActivePanel(activePanel === 'layers' ? 'none' : 'layers')}>[m
+         <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><rect x="2" y="2" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="6" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/><rect x="2" y="10" width="12" height="3" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1"/></svg>[m
+         <span className="mob-txt">Слои</span>[m
+       </button>[m
+       {appMode === 'admin' && ([m
+[31m-        <button className={`s-btn mob-btn ${activePanel === 'menu' ? 'active' : ''}`} onPointerUp={blurBtn} onClick={() => setActivePanel(activePanel === 'menu' ? 'none' : 'menu')}>[m
+[32m+[m[32m        <button className={`s-btn mob-btn ${activePanel === 'menu' ? 'active' : ''}`} onClick={() => setActivePanel(activePanel === 'menu' ? 'none' : 'menu')}>[m
+           <svg viewBox="0 0 16 16" width="14" height="14" className="toolbar-svg-icon"><line x1="2" y1="3" x2="14" y2="3" stroke="currentColor" strokeWidth="1.5"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5"/><line x1="2" y1="13" x2="14" y2="13" stroke="currentColor" strokeWidth="1.5"/></svg>[m
+           <span className="mob-txt">Меню</span>[m
+         </button>[m
