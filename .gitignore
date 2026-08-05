@@ -1,56 +1,52 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Мусор от ИИ-ассистентов и разработки
+*.py
+!scripts/*.py
+worklog.md
+Caddyfile
+download/
+fix.py
+fix_*.py
+apply_improvements.py
+debug_files.py
+nuke_repo.py
 
-# dependencies
-node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-# ...но шаблон без секретов нужен в репозитории
-!.env.example
-
-# vercel
-.vercel
-
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-local-*
-.claude
-.z-ai-config
+# Временные файлы
 *.log
 dev.log
-dev.out.log
-test
-prompt
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
 
-server.log
-# Skills directory
-/skills/
+# Node
+node_modules/
+.next/
+.vercel/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Build
+dist/
+build/
+*.tgz
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Пустые дубликаты
+public/data/
+
+# Большие карты (если решите убрать из репо)
+# public/assets/map-satellite.jpg
+# public/assets/map-satellite.webp
+# public/assets/map-satellite-mobile.*
